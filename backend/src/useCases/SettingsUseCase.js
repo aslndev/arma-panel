@@ -1,4 +1,112 @@
+import { existsSync, readdirSync } from "fs";
+import { readdir, readFile } from "fs/promises";
+import { join } from "path";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
+
+const ARMA_EXECUTABLE = "ArmaReforgerServer";
+const LINUXGSM_SCRIPT = "armarserver";
+const LINUXGSM_SERVERFILES = "serverfiles";
+const CONFIG_CANDIDATES = ["armarserver_config.json", "config.json", "server_config.json", "server.json"];
+
+/**
+ * Find server folder and config file based on LinuxGSM install.
+ * LinuxGSM: user runs ./armarserver install → script in ~/armarserver, game files in ~/serverfiles.
+ * See https://linuxgsm.com/servers/armarserver/
+ */
+function getLinuxGSMCandidates() {
+  const out = [];
+  if (process.platform !== "linux") return out;
+  try {
+    const home = "/home";
+    const entries = readdirSync(home, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith(".")) continue;
+      const userHome = join(home, e.name);
+      const scriptPath = join(userHome, LINUXGSM_SCRIPT);
+      const serverfilesPath = join(userHome, LINUXGSM_SERVERFILES);
+      const exePath = join(serverfilesPath, ARMA_EXECUTABLE);
+      if (existsSync(scriptPath) && existsSync(exePath)) {
+        out.push(serverfilesPath);
+      }
+    }
+  } catch (_) {}
+  return out;
+}
+
+/** Fallback: paths that might contain ArmaReforgerServer (non-LinuxGSM or legacy). */
+function getFallbackCandidates() {
+  const candidates = [
+    "/home/armarserver/serverfiles",
+    "/home/armarserver",
+    "/opt/armarserver/serverfiles",
+    "/opt/armarserver",
+  ];
+  if (process.platform !== "linux") return [];
+  try {
+    const home = "/home";
+    const entries = readdirSync(home, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith(".")) continue;
+      const serverfiles = join(home, e.name, LINUXGSM_SERVERFILES);
+      const homedir = join(home, e.name);
+      if (!candidates.includes(serverfiles)) candidates.push(serverfiles);
+      if (!candidates.includes(homedir)) candidates.push(homedir);
+    }
+  } catch (_) {}
+  return candidates;
+}
+
+function pickConfigInDir(dir) {
+  for (const name of CONFIG_CANDIDATES) {
+    if (existsSync(join(dir, name))) return name;
+  }
+  return null;
+}
+
+async function findConfigInDir(dir) {
+  let configFile = pickConfigInDir(dir);
+  if (configFile) return configFile;
+  const files = await readdir(dir).catch(() => []);
+  const json = files.filter((f) => f.endsWith(".json"));
+  for (const f of json) {
+    const raw = await readFile(join(dir, f), "utf8").catch(() => "");
+    if (raw && /"(?:bindPort|publicPort|gameHost|rcon|publicAddress)"/.test(raw)) return f;
+  }
+  return json.length > 0 ? json[0] : CONFIG_CANDIDATES[0];
+}
+
+/**
+ * Detect server folder and config file. Prefers LinuxGSM installs (user with armarserver script + serverfiles).
+ * Returns { serverFolder, configFile, source?: 'linuxgsm' } or nulls.
+ */
+export async function detectServer() {
+  if (process.platform !== "linux") {
+    return { serverFolder: null, configFile: null };
+  }
+  const linuxgsmPaths = getLinuxGSMCandidates();
+  const fallbackPaths = getFallbackCandidates();
+  const ordered = [...linuxgsmPaths];
+  for (const p of fallbackPaths) {
+    if (ordered.includes(p)) continue;
+    const exe = join(p, ARMA_EXECUTABLE);
+    if (existsSync(exe)) ordered.push(p);
+  }
+  for (const dir of ordered) {
+    try {
+      const exe = join(dir, ARMA_EXECUTABLE);
+      if (!existsSync(exe)) continue;
+      const configFile = await findConfigInDir(dir);
+      return {
+        serverFolder: dir,
+        configFile: configFile || CONFIG_CANDIDATES[0],
+        source: linuxgsmPaths.includes(dir) ? "linuxgsm" : undefined,
+      };
+    } catch (_) {
+      continue;
+    }
+  }
+  return { serverFolder: null, configFile: null };
+}
 
 export function getSettings() {
   return SettingsRepo.getSettings();

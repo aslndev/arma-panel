@@ -1,13 +1,15 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { FolderOpen, FileText, Terminal, LayoutDashboard, Server } from "lucide-react";
+import { FolderOpen, FileText, Terminal, LayoutDashboard, Server, Search } from "lucide-react";
 import { useServerSettings } from "@/contexts/ServerSettingsContext";
 import { settingsApi } from "@/api/endpoints";
 
 const SettingsPanel = () => {
   const { panelName, setPanelName, serverFolder, setServerFolder, configFile, setConfigFile, steamcmdPath, setSteamcmdPath, armaServerFile, setArmaServerFile, refreshSettings } = useServerSettings();
+  const [detecting, setDetecting] = useState(false);
 
   const handleSave = async () => {
     try {
@@ -46,12 +48,41 @@ const SettingsPanel = () => {
           <Label className="flex items-center gap-2 text-foreground">
             <FolderOpen className="h-4 w-4 text-primary" /> Server Folder
           </Label>
-          <Input
-            value={serverFolder}
-            onChange={(e) => setServerFolder(e.target.value)}
-            placeholder="/path/to/server"
-          />
-          <p className="text-xs text-muted-foreground">Arma Reforger server installation folder path</p>
+          <div className="flex gap-2">
+            <Input
+              value={serverFolder}
+              onChange={(e) => setServerFolder(e.target.value)}
+              placeholder="/path/to/server"
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              title="Auto-detect server folder and config"
+              disabled={detecting}
+              onClick={async () => {
+                setDetecting(true);
+                try {
+                  const d = await settingsApi.detect();
+                  if (d?.serverFolder) {
+                    setServerFolder(d.serverFolder);
+                    if (d.configFile) setConfigFile(d.configFile);
+                    toast.success("Server path and config detected.");
+                  } else {
+                    toast.info("No Arma Reforger server found in common paths.");
+                  }
+                } catch {
+                  toast.error("Detection failed.");
+                } finally {
+                  setDetecting(false);
+                }
+              }}
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Arma Reforger server installation folder path (auto-detected on load when empty)</p>
         </div>
 
         <div className="space-y-2">
@@ -61,7 +92,7 @@ const SettingsPanel = () => {
           <Input
             value={configFile}
             onChange={(e) => setConfigFile(e.target.value)}
-            placeholder="/path/to/config.json"
+            placeholder="armarserver_config.json or /path/to/config.json"
           />
           <p className="text-xs text-muted-foreground">Path to server config file — used by Config Editor</p>
         </div>

@@ -5,6 +5,19 @@ export function getSettings(req, res) {
   res.json(settings || {});
 }
 
+export async function detectServer(req, res) {
+  try {
+    const detected = await SettingsUseCase.detectServer();
+    return res.json(detected);
+  } catch (err) {
+    return res.status(500).json({
+      serverFolder: null,
+      configFile: null,
+      error: err.message || "Detection failed",
+    });
+  }
+}
+
 export function completeSetup(req, res) {
   const body = req.body || {};
   const settings = SettingsUseCase.completeSetup({

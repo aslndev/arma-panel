@@ -62,12 +62,26 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
     }
     try {
       const s = await settingsApi.get();
+      const folder = (s.serverFolder ?? "").trim();
+      const config = (s.configFile ?? "").trim();
+      const useDefaults = !folder || folder === defaults.serverFolder;
       setPanelName(s.panelName ?? defaults.panelName);
-      setServerFolder(s.serverFolder ?? defaults.serverFolder);
-      setConfigFile(s.configFile ?? defaults.configFile);
+      setServerFolder(folder || defaults.serverFolder);
+      setConfigFile(config || defaults.configFile);
       setSteamcmdPath(s.steamcmdPath ?? defaults.steamcmdPath);
       setArmaServerFile(s.armaServerFile ?? defaults.armaServerFile);
       setSetupComplete(s.setupComplete ?? false);
+      if (useDefaults) {
+        try {
+          const d = await settingsApi.detect();
+          if (d?.serverFolder) {
+            setServerFolder(d.serverFolder);
+            if (d.configFile) setConfigFile(d.configFile);
+          }
+        } catch (_) {
+          /* ignore */
+        }
+      }
     } catch {
       setSetupComplete(false);
     } finally {

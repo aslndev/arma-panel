@@ -34,8 +34,15 @@ export const authApi = {
   me: () => api.get<{ user: { id: number; username: string } }>("/api/auth/me"),
 };
 
+export interface DetectServerResponse {
+  serverFolder: string | null;
+  configFile: string | null;
+  error?: string;
+}
+
 export const settingsApi = {
   get: () => api.get<SettingsResponse>("/api/settings"),
+  detect: () => api.get<DetectServerResponse>("/api/settings/detect"),
   completeSetup: (data: {
     panelName: string;
     serverFolder: string;

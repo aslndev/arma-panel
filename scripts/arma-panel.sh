@@ -337,6 +337,65 @@ WRAPPER_EOF
   chmod +x "${INSTALL_DIR}/scripts/arma-server-start.sh"
 }
 
+# LinuxGSM Arma Reforger: https://linuxgsm.com/servers/armarserver/
+# Creates user, downloads LinuxGSM script, runs interactive ./armarserver install
+install_linuxgsm_armarserver() {
+  local game_user="${1:-armarserver}"
+  if ! id "$game_user" &>/dev/null; then
+    info "Creating user ${game_user} for game server..."
+    useradd -m -s /bin/bash "$game_user" 2>/dev/null || true
+    if ! id "$game_user" &>/dev/null; then
+      err "Could not create user ${game_user}. Create it manually and run again."
+      return 1
+    fi
+    info "User ${game_user} created. Set password later with: passwd ${game_user}"
+  else
+    info "User ${game_user} already exists."
+  fi
+
+  if ! command -v tmux &>/dev/null; then
+    warn "tmux not found. LinuxGSM uses it for console. Install with: apt install tmux / dnf install tmux"
+    install_package tmux 2>/dev/null || true
+  fi
+
+  info "Downloading LinuxGSM and setting up armarserver script..."
+  if ! sudo -u "$game_user" bash -c 'cd ~ && curl -sSL -o linuxgsm.sh https://linuxgsm.sh && chmod +x linuxgsm.sh && bash linuxgsm.sh armarserver'; then
+    err "LinuxGSM download/setup failed."
+    return 1
+  fi
+
+  info "Starting Arma Reforger server installer (LinuxGSM). Follow the on-screen instructions (Steam login, etc.)..."
+  echo ""
+  if ! sudo -u "$game_user" -i bash -c 'cd ~ && ./armarserver install'; then
+    warn "LinuxGSM install exited with an error. You can run manually: sudo su - ${game_user} then ./armarserver install"
+    return 1
+  fi
+
+  local home_dir
+  home_dir=$(getent passwd "$game_user" | cut -d: -f6)
+  [[ -z "$home_dir" ]] && home_dir="/home/${game_user}"
+  # Typical LinuxGSM path for game files
+  local server_root="${home_dir}/serverfiles"
+  if [[ ! -d "$server_root" ]]; then
+    server_root="${home_dir}"
+  fi
+
+  info "Allowing panel user ${PANEL_USER} to run the game server (group read+execute on server files)..."
+  if getent group "$game_user" &>/dev/null; then
+    usermod -aG "$game_user" "$PANEL_USER" 2>/dev/null || true
+    chmod -R g+rX "$server_root" 2>/dev/null || true
+  else
+    chmod -R o+rX "$server_root" 2>/dev/null || true
+  fi
+
+  echo ""
+  info "LinuxGSM Arma Reforger install done. In the panel, open Settings and set:"
+  info "  Server Folder: ${server_root}"
+  info "  Config File:   (e.g. armarserver_config.json or the path shown by ./armarserver details)"
+  info "Then use the panel Start button to run the server via systemd."
+  return 0
+}
+
 cmd_install() {
   info "Installing Arma Panel to ${INSTALL_DIR}..."
 
@@ -408,6 +467,18 @@ cmd_install() {
   echo "${PANEL_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl stop ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl restart ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl status ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl is-active ${ARMA_SERVER_SERVICE}" > "/etc/sudoers.d/arma-panel-${ARMA_SERVER_SERVICE}"
   chmod 440 "/etc/sudoers.d/arma-panel-${ARMA_SERVER_SERVICE}"
   info "Game server: systemctl start|stop|restart|status $ARMA_SERVER_SERVICE (or use panel Start/Stop)"
+
+  echo ""
+  local do_linuxgsm="n"
+  if [[ $AUTO_INSTALL_DEPS -eq 1 ]]; then
+    do_linuxgsm="n"
+  else
+    read -p "Install Arma Reforger game server from scratch via LinuxGSM? (https://linuxgsm.com/servers/armarserver/) [y/N] " -r
+    do_linuxgsm="${REPLY:-n}"
+  fi
+  if [[ "$do_linuxgsm" =~ ^[Yy]$ ]]; then
+    install_linuxgsm_armarserver "armarserver" || true
+  fi
 
   info "Setting ownership to ${PANEL_USER} (service user) so the panel can write to the database..."
   chown -R "${PANEL_USER}:${PANEL_USER}" "$INSTALL_DIR"
@@ -539,7 +610,7 @@ cmd_status() {
 cmd_usage() {
   echo "Usage: $0 { install | update | uninstall | start | restart | stop | status }"
   echo ""
-  echo "  install   - Install panel to ${INSTALL_DIR}, build frontend, create panel + game server systemd services"
+  echo "  install   - Install panel (+ optional LinuxGSM Arma Reforger server from scratch), create systemd services"
   echo "  update    - Rebuild and restart (copy latest code, npm install, build frontend, restart; keeps DB)"
   echo "  uninstall - Stop services, remove systemd units, optionally remove install dir"
   echo "  start     - Start the panel (systemctl start ${SERVICE_NAME})"
