@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "fs";
 import { readdir, readFile } from "fs/promises";
-import { join } from "path";
+import { join, resolve } from "path";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
 
 const ARMA_EXECUTABLE = "ArmaReforgerServer";
@@ -177,7 +177,7 @@ export function completeSetup(data) {
   SettingsRepo.updateSettings({
     panelName: data.panelName ?? "Arma Panel",
     serverFolder: data.serverFolder ?? "/home/arma/server",
-    configFile: data.configFile ?? "/home/arma/server/config.json",
+    configFile: data.configFile ?? "config.json",
     setupComplete: true,
   });
   return SettingsRepo.getSettings();

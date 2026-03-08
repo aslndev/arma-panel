@@ -103,9 +103,9 @@ const SettingsPanel = () => {
           <Input
             value={configFile}
             onChange={(e) => setConfigFile(e.target.value)}
-            placeholder="armarserver_config.json or /path/to/config.json"
+            placeholder="e.g. armarserver_config.json (relative to Server folder)"
           />
-          <p className="text-xs text-muted-foreground">Path to server config file — used by Config Editor</p>
+          <p className="text-xs text-muted-foreground">Relative to Server folder. Full path: {serverFolder ? `${serverFolder.replace(/\/$/, "")}/${configFile || "…"}` : "—"}</p>
         </div>
 
         <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/80">

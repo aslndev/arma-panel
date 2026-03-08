@@ -111,11 +111,11 @@ const Setup = () => {
                 <Input
                   id="configFile"
                   type="text"
-                  placeholder="/home/arma/server/config.json"
+                  placeholder="e.g. armarserver_config.json (relative to Server folder)"
                   value={config}
                   onChange={(e) => setConfig(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Path to server config file — used by Config Editor</p>
+                <p className="text-xs text-muted-foreground">Relative to Server folder. Full path: {folder ? `${folder.replace(/\/$/, "")}/${config || "…"}` : "—"}</p>
               </div>
 
               {error && (

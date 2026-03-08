@@ -1,4 +1,16 @@
+import { resolve } from "path";
 import db from "../infrastructure/database.js";
+
+/** Store config file as relative to server folder when it lies under it. */
+function normalizeConfigFile(serverFolder, configFile) {
+  const cf = (configFile ?? "").trim();
+  if (!cf) return cf;
+  if (!cf.startsWith("/")) return cf;
+  const base = resolve(serverFolder);
+  const full = resolve(cf);
+  const rel = full.startsWith(base + "/") ? full.slice(base.length + 1) : full.startsWith(base + "\\") ? full.slice(base.length + 1) : cf;
+  return rel !== full ? rel : cf;
+}
 
 export function getSettings() {
   const row = db.prepare(
@@ -15,6 +27,8 @@ export function getSettings() {
 }
 
 export function updateSettings(data) {
+  const serverFolder = data.serverFolder ?? "/home/arma/server";
+  const configFile = normalizeConfigFile(serverFolder, data.configFile ?? "config.json") || "config.json";
   db.prepare(
     `UPDATE panel_settings SET
       panel_name = ?,
@@ -24,8 +38,8 @@ export function updateSettings(data) {
     WHERE id = 1`
   ).run(
     data.panelName ?? "Arma Panel",
-    data.serverFolder ?? "/home/arma/server",
-    data.configFile ?? "/home/arma/server/config.json",
+    serverFolder,
+    configFile,
     data.setupComplete ? 1 : 0
   );
   return getSettings();
