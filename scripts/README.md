@@ -12,6 +12,8 @@ sudo ./scripts/arma-panel.sh install
 
 Then open **http://localhost:3001** (or your server IP).
 
+**Re-run install:** If the install directory already exists, the script overwrites app files and asks: *"Also overwrite database (backend/data)? Settings and users will be reset. [y/N]"* — answer **N** to keep existing panel settings and users; **y** to reset the database.
+
 ## Commands
 
 | Command     | Description |

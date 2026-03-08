@@ -287,17 +287,39 @@ cmd_install() {
     exit 1
   fi
 
+  local overwrite_db="n"
   if [[ -d "$INSTALL_DIR" ]]; then
-    warn "Directory ${INSTALL_DIR} already exists. Overwriting."
+    warn "Directory ${INSTALL_DIR} already exists. Installation will be overwritten."
+    echo ""
+    if [[ $AUTO_INSTALL_DEPS -eq 1 ]]; then
+      overwrite_db="n"
+    else
+      read -p "Also overwrite database (backend/data)? Settings and users will be reset. [y/N] " -r
+      overwrite_db="${REPLY:-n}"
+    fi
   else
     mkdir -p "$INSTALL_DIR"
   fi
 
+  local data_backup=""
+  if [[ -d "$INSTALL_DIR/backend/data" ]] && [[ ! "$overwrite_db" =~ ^[Yy]$ ]]; then
+    data_backup=$(mktemp -d)
+    cp -a "$INSTALL_DIR/backend/data/"* "$data_backup/" 2>/dev/null || true
+    info "Existing database preserved (will restore after copy)."
+  fi
+
   info "Copying project files..."
+  rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/frontend"
   cp -r "$PROJECT_ROOT/backend" "$INSTALL_DIR/"
   cp -r "$PROJECT_ROOT/frontend" "$INSTALL_DIR/"
   cp -r "$PROJECT_ROOT/scripts" "$INSTALL_DIR/" 2>/dev/null || true
   mkdir -p "$INSTALL_DIR/backend/data"
+
+  if [[ -n "$data_backup" ]] && [[ -d "$data_backup" ]]; then
+    cp -a "$data_backup/"* "$INSTALL_DIR/backend/data/" 2>/dev/null || true
+    rm -rf "$data_backup"
+    info "Database restored (settings and users kept)."
+  fi
 
   info "Installing backend dependencies..."
   (cd "$INSTALL_DIR/backend" && npm install --omit=dev)
