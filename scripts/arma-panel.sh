@@ -95,6 +95,22 @@ install_crontab() {
   hash -r
 }
 
+# Install SteamCMD and game server deps (Debian/Ubuntu: i386, steamcmd, jq, etc. for LinuxGSM/Arma)
+install_steam_game_deps() {
+  if [[ "$(detect_pkg_manager)" != "apt" ]]; then
+    warn "Steam/game deps (steamcmd, i386 libs) are for Debian/Ubuntu. On other distros install steamcmd and 32-bit libs manually."
+    return 0
+  fi
+  info "Adding i386 architecture and installing SteamCMD + game server dependencies..."
+  dpkg --add-architecture i386 2>/dev/null || true
+  apt-get update -qq
+  apt-get install -y -qq \
+    bsdmainutils bzip2 jq lib32gcc-s1 lib32stdc++6 \
+    libsdl2-2.0-0:i386 netcat pigz steamcmd unzip
+  hash -r
+  info "SteamCMD and game server dependencies installed."
+}
+
 # Install Node.js via NodeSource (Debian/Ubuntu)
 install_nodejs_apt() {
   info "Installing Node.js ${NODE_RECOMMENDED_MAJOR}.x LTS via NodeSource..."
@@ -401,6 +417,20 @@ cmd_install() {
 
   if ! check_and_install_deps; then
     exit 1
+  fi
+
+  if [[ "$(detect_pkg_manager)" == "apt" ]]; then
+    echo ""
+    local do_steam_deps="n"
+    if [[ $AUTO_INSTALL_DEPS -eq 1 ]]; then
+      do_steam_deps="y"
+    else
+      read -p "Install SteamCMD and game server deps (i386, steamcmd, jq, bzip2, etc.) for LinuxGSM/Arma? [Y/n] " -r
+      do_steam_deps="${REPLY:-y}"
+    fi
+    if [[ "$do_steam_deps" =~ ^[Yy]$ ]]; then
+      install_steam_game_deps || warn "Steam/game deps install had errors. You can run later: sudo dpkg --add-architecture i386; sudo apt update; sudo apt install bsdmainutils bzip2 jq lib32gcc-s1 lib32stdc++6 libsdl2-2.0-0:i386 netcat pigz steamcmd unzip"
+    fi
   fi
 
   local overwrite_db="n"

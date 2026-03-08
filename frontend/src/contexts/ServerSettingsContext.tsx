@@ -24,6 +24,8 @@ interface ServerSettings {
   armaServerFile: string;
   setArmaServerFile: (v: string) => void;
   setupComplete: boolean;
+  /** Set when auto-detect finds LinuxGSM install incomplete/failed (script present but serverfiles or binary missing). */
+  detectInstallMessage: string | null;
   completeSetup: (data: StoredSettings) => Promise<void>;
   refreshSettings: () => Promise<void>;
 }
@@ -54,6 +56,7 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
   const [armaServerFile, setArmaServerFile] = useState(defaults.armaServerFile);
   const [setupComplete, setSetupComplete] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [detectInstallMessage, setDetectInstallMessage] = useState<string | null>(null);
 
   const refreshSettings = useCallback(async () => {
     if (!hasToken()) {
@@ -74,13 +77,20 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
       if (useDefaults) {
         try {
           const d = await settingsApi.detect();
-          if (d?.serverFolder) {
-            setServerFolder(d.serverFolder);
-            if (d.configFile) setConfigFile(d.configFile);
+          if (d?.installStatus === "incomplete" && d?.installMessage) {
+            setDetectInstallMessage(d.installMessage);
+          } else {
+            setDetectInstallMessage(null);
+            if (d?.serverFolder) {
+              setServerFolder(d.serverFolder);
+              if (d.configFile) setConfigFile(d.configFile);
+            }
           }
         } catch (_) {
-          /* ignore */
+          setDetectInstallMessage(null);
         }
+      } else {
+        setDetectInstallMessage(null);
       }
     } catch {
       setSetupComplete(false);
@@ -129,6 +139,7 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
     armaServerFile,
     setArmaServerFile,
     setupComplete: loaded ? setupComplete : false,
+    detectInstallMessage,
     completeSetup,
     refreshSettings,
   };

@@ -2,13 +2,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { FolderOpen, FileText, Terminal, LayoutDashboard, Server, Search } from "lucide-react";
+import { FolderOpen, FileText, Terminal, LayoutDashboard, Server, Search, AlertTriangle } from "lucide-react";
 import { useServerSettings } from "@/contexts/ServerSettingsContext";
 import { settingsApi } from "@/api/endpoints";
 
 const SettingsPanel = () => {
-  const { panelName, setPanelName, serverFolder, setServerFolder, configFile, setConfigFile, steamcmdPath, setSteamcmdPath, armaServerFile, setArmaServerFile, refreshSettings } = useServerSettings();
+  const { panelName, setPanelName, serverFolder, setServerFolder, configFile, setConfigFile, steamcmdPath, setSteamcmdPath, armaServerFile, setArmaServerFile, detectInstallMessage, refreshSettings } = useServerSettings();
   const [detecting, setDetecting] = useState(false);
 
   const handleSave = async () => {
@@ -30,7 +31,15 @@ const SettingsPanel = () => {
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-foreground">Server Configuration</h2>
-      
+
+      {detectInstallMessage && (
+        <Alert variant="destructive" className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200 [&>svg]:text-amber-600">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>LinuxGSM / Arma server install incomplete</AlertTitle>
+          <AlertDescription className="mt-1 whitespace-pre-wrap">{detectInstallMessage}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="space-y-4 rounded-lg border border-border bg-card p-6">
         <div className="space-y-2">
           <Label className="flex items-center gap-2 text-foreground">
@@ -65,12 +74,16 @@ const SettingsPanel = () => {
                 setDetecting(true);
                 try {
                   const d = await settingsApi.detect();
+                  if (d?.installStatus === "incomplete" && d?.installMessage) {
+                    toast.warning(d.installMessage, { duration: 10000 });
+                    return;
+                  }
                   if (d?.serverFolder) {
                     setServerFolder(d.serverFolder);
                     if (d.configFile) setConfigFile(d.configFile);
                     toast.success("Server path and config detected.");
                   } else {
-                    toast.info("No Arma Reforger server found in common paths.");
+                    toast.info(d?.installMessage ?? "No Arma Reforger server found in common paths.");
                   }
                 } catch {
                   toast.error("Detection failed.");

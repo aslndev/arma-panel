@@ -33,6 +33,43 @@ function getLinuxGSMCandidates() {
   return out;
 }
 
+/**
+ * Detect failed or incomplete LinuxGSM/armarserver install: script exists but serverfiles missing or binary missing.
+ * Returns { found: true, user, reason, message } for first incomplete install, or { found: false }.
+ */
+function getIncompleteLinuxGSM() {
+  if (process.platform !== "linux") return { found: false };
+  try {
+    const home = "/home";
+    const entries = readdirSync(home, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith(".")) continue;
+      const userHome = join(home, e.name);
+      const scriptPath = join(userHome, LINUXGSM_SCRIPT);
+      const serverfilesPath = join(userHome, LINUXGSM_SERVERFILES);
+      const exePath = join(serverfilesPath, ARMA_EXECUTABLE);
+      if (!existsSync(scriptPath)) continue;
+      if (!existsSync(serverfilesPath)) {
+        return {
+          found: true,
+          user: e.name,
+          reason: "no_serverfiles",
+          message: `LinuxGSM script found for user "${e.name}" but server files are missing. Run: sudo su - ${e.name} then ./armarserver install`,
+        };
+      }
+      if (!existsSync(exePath)) {
+        return {
+          found: true,
+          user: e.name,
+          reason: "no_binary",
+          message: `LinuxGSM serverfiles exist for "${e.name}" but ${ARMA_EXECUTABLE} is missing. Run: sudo su - ${e.name} then ./armarserver install`,
+        };
+      }
+    }
+  } catch (_) {}
+  return { found: false };
+}
+
 /** Fallback: paths that might contain ArmaReforgerServer (non-LinuxGSM or legacy). */
 function getFallbackCandidates() {
   const candidates = [
@@ -77,11 +114,18 @@ async function findConfigInDir(dir) {
 
 /**
  * Detect server folder and config file. Prefers LinuxGSM installs (user with armarserver script + serverfiles).
- * Returns { serverFolder, configFile, source?: 'linuxgsm' } or nulls.
+ * Also detects failed/incomplete LinuxGSM install (script present but serverfiles or binary missing).
+ * Returns { serverFolder, configFile, source?, installStatus, installMessage?, linuxgsmUser? }.
+ * installStatus: 'ok' | 'incomplete' | 'not_found'
  */
 export async function detectServer() {
   if (process.platform !== "linux") {
-    return { serverFolder: null, configFile: null };
+    return {
+      serverFolder: null,
+      configFile: null,
+      installStatus: "not_found",
+      installMessage: "Detection only supported on Linux.",
+    };
   }
   const linuxgsmPaths = getLinuxGSMCandidates();
   const fallbackPaths = getFallbackCandidates();
@@ -100,12 +144,29 @@ export async function detectServer() {
         serverFolder: dir,
         configFile: configFile || CONFIG_CANDIDATES[0],
         source: linuxgsmPaths.includes(dir) ? "linuxgsm" : undefined,
+        installStatus: "ok",
       };
     } catch (_) {
       continue;
     }
   }
-  return { serverFolder: null, configFile: null };
+  const incomplete = getIncompleteLinuxGSM();
+  if (incomplete.found) {
+    return {
+      serverFolder: null,
+      configFile: null,
+      installStatus: "incomplete",
+      installMessage: incomplete.message,
+      linuxgsmUser: incomplete.user,
+      reason: incomplete.reason,
+    };
+  }
+  return {
+    serverFolder: null,
+    configFile: null,
+    installStatus: "not_found",
+    installMessage: "No Arma Reforger server or LinuxGSM install found. Install via: curl -Lo linuxgsm.sh https://linuxgsm.sh && bash linuxgsm.sh armarserver then ./armarserver install",
+  };
 }
 
 export function getSettings() {

@@ -37,6 +37,12 @@ export const authApi = {
 export interface DetectServerResponse {
   serverFolder: string | null;
   configFile: string | null;
+  /** 'ok' = server found; 'incomplete' = LinuxGSM script present but install failed/incomplete; 'not_found' = nothing found */
+  installStatus?: "ok" | "incomplete" | "not_found";
+  installMessage?: string;
+  linuxgsmUser?: string;
+  reason?: string;
+  source?: "linuxgsm";
   error?: string;
 }
 
