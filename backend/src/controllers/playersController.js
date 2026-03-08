@@ -7,6 +7,7 @@ export async function list(req, res) {
       players: result.players ?? [],
       raw: result.raw ?? "",
       error: result.error || undefined,
+      playerCount: result.playerCount || undefined,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message || "Failed to list players" });

@@ -27,7 +27,7 @@ import { useConsoleWs } from "@/contexts/ConsoleWsContext";
 type TabId = "online" | "bans";
 
 const PlayersPanel = () => {
-  const { players: wsPlayers, playersError, subscribePlayers, unsubscribePlayers, connected } = useConsoleWs();
+  const { players: wsPlayers, playersCount, playersError, subscribePlayers, unsubscribePlayers, connected } = useConsoleWs();
   const [tab, setTab] = useState<TabId>("online");
   const [bans, setBans] = useState<{ identityId: string; detail: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,6 +164,12 @@ const PlayersPanel = () => {
             </div>
           ) : (
             <div className="divide-y divide-border">
+              {playersCount && (
+                <div className="px-4 py-2 bg-muted/30 text-sm text-muted-foreground border-b border-border">
+                  Players: {playersCount.current}
+                  {playersCount.max != null ? ` / ${playersCount.max}` : ""}
+                </div>
+              )}
               <div className="grid grid-cols-[1fr_1fr_auto] gap-4 px-4 py-2.5 bg-muted/40 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 <div>Player / ID</div>
                 <div>Name</div>

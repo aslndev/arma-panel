@@ -170,30 +170,70 @@ export function sendCommandOnConnection(rcon, command) {
   });
 }
 
+/** Lines that are RCON log/header, not player data - skip these. */
+const RCON_LOG_PATTERNS = [
+  /logged\s+in/i,
+  /client\s+id\s*:/i,
+  /processing\s+command/i,
+  /players\s+on\s+server/i,
+  /\[player#\]/i,
+  /\[player\s+uid\]/i,
+  /\[player\s+name\]/i,
+];
+
+function isRconLogLine(line) {
+  const t = line.toLowerCase();
+  return RCON_LOG_PATTERNS.some((p) => p.test(t));
+}
+
+/** Match "X/Y" or "X / Y" (current/max players) in server response. */
+const PLAYER_COUNT_REGEX = /(\d+)\s*\/\s*(\d+)/;
+
 /**
- * Parse raw "players" response into { players } array. Handles common formats.
+ * Parse raw "players" response into { players, raw, playerCount? }.
+ * Filters out RCON log/header lines. Supports Reforger format: "N ; UID ; Name".
+ * Extracts player count (current/max) when present in the response (e.g. "1/64").
  */
 export function parsePlayersResponse(raw) {
-  const lines = String(raw || "")
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const text = String(raw || "");
+  const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   const players = [];
-  for (const line of lines) {
-    const parts = line.split(/\s+/);
-    if (parts.length >= 1) {
-      const id = parts[0];
-      const name = parts.slice(1).join(" ").trim() || id;
-      if (id && /^[\d]+$/.test(id)) players.push({ identityId: id, name });
-      else if (line) players.push({ identityId: line, name: line });
+  let playerCount = null;
+  const countMatch = text.match(PLAYER_COUNT_REGEX);
+  if (countMatch) {
+    const current = parseInt(countMatch[1], 10);
+    const max = parseInt(countMatch[2], 10);
+    if (!Number.isNaN(current) && !Number.isNaN(max)) {
+      playerCount = { current, max };
     }
   }
-  return { players, raw };
+  for (const line of lines) {
+    if (isRconLogLine(line)) continue;
+    const semicolonParts = line.split(/\s*;\s*/).map((s) => s.trim());
+    if (semicolonParts.length >= 3 && /^\d+$/.test(semicolonParts[0])) {
+      const id = semicolonParts[0];
+      const uid = semicolonParts[1] || "";
+      const name = semicolonParts.slice(2).join(" ; ").trim() || uid || id;
+      players.push({ identityId: id, name });
+      continue;
+    }
+    const parts = line.split(/\s+/);
+    if (parts.length >= 2 && /^\d+$/.test(parts[0])) {
+      const id = parts[0];
+      const name = parts.slice(1).join(" ").trim() || id;
+      players.push({ identityId: id, name });
+    }
+  }
+  if (playerCount == null && players.length > 0) {
+    playerCount = { current: players.length, max: null };
+  }
+  return { players, raw, playerCount };
 }
 
 /**
  * List connected players. Sends "players". On RCON/config error returns { players: [], error }.
- * Expected format is often: "ID Name" per line or similar; we try to parse and fallback to raw lines.
+ * Uses same parsing as parsePlayersResponse (filters RCON log lines, supports "N ; UID ; Name").
+ * Includes playerCount { current, max } when present in server response.
  */
 export async function listPlayers(byUser = "admin") {
   let raw = "";
@@ -203,47 +243,35 @@ export async function listPlayers(byUser = "admin") {
     const msg = err?.message || String(err);
     return { players: [], raw: "", error: msg };
   }
-  const lines = String(raw || "")
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const players = [];
-  for (const line of lines) {
-    const parts = line.split(/\s+/);
-    if (parts.length >= 1) {
-      const id = parts[0];
-      const name = parts.slice(1).join(" ").trim() || id;
-      if (id && /^[\d]+$/.test(id)) players.push({ identityId: id, name });
-      else if (line) players.push({ identityId: line, name: line });
-    }
-  }
-  return { players, raw };
+  const { players, playerCount } = parsePlayersResponse(raw);
+  return { players, raw, playerCount };
 }
 
 /**
- * Kick a player by IdentityId. Optional reason.
+ * Kick a player by numeric player ID. Arma Reforger: #kick <playerId>
  */
 export async function kickPlayer(identityId, reason, byUser = "admin") {
-  const cmd = reason ? `kick ${identityId} ${reason}` : `kick ${identityId}`;
+  const id = String(identityId).trim();
+  const cmd = reason ? `#kick ${id} ${reason}` : `#kick ${id}`;
   return runCommand(cmd, byUser);
 }
 
 /**
- * Ban a player. reason optional; durationSeconds 0 or omitted = permanent (if supported).
+ * Ban a player. Arma Reforger: #ban <playerId> <durationSeconds> (0 = permanent).
  */
 export async function banPlayer(identityId, reason, durationSeconds, byUser = "admin") {
-  const reasonPart = reason ? ` ${reason}` : "";
-  const cmd = durationSeconds > 0
-    ? `#ban create ${identityId} ${durationSeconds}${reasonPart}`
-    : `ban ${identityId}${reasonPart}`;
-  return runCommand(cmd.trim(), byUser);
+  const id = String(identityId).trim();
+  const duration = Math.max(0, Number(durationSeconds) || 0);
+  const cmd = `#ban ${id} ${duration}`;
+  return runCommand(cmd, byUser);
 }
 
 /**
- * Unban a player by IdentityId.
+ * Unban a player. Arma Reforger: #ban remove <playerId>
  */
 export async function unbanPlayer(identityId, byUser = "admin") {
-  return runCommand(`#ban remove ${identityId}`, byUser);
+  const id = String(identityId).trim();
+  return runCommand(`#ban remove ${id}`, byUser);
 }
 
 /**

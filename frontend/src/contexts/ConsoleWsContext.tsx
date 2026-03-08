@@ -18,9 +18,15 @@ interface ExecResult {
 
 type ResolveExec = (value: ExecResult) => void;
 
+export interface PlayersCount {
+  current: number;
+  max: number | null;
+}
+
 interface ConsoleWsValue {
   summary: ServerSummary | null;
   players: ServerPlayer[] | null;
+  playersCount: PlayersCount | null;
   playersError: string | null;
   sendExec: (command: string) => Promise<ExecResult>;
   subscribePlayers: () => void;
@@ -39,6 +45,7 @@ export function useConsoleWs() {
 export function ConsoleWsProvider({ children }: { children: ReactNode }) {
   const [summary, setSummary] = useState<ServerSummary | null>(null);
   const [players, setPlayers] = useState<ServerPlayer[] | null>(null);
+  const [playersCount, setPlayersCount] = useState<PlayersCount | null>(null);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -63,6 +70,14 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
         }
         if (msg.type === "players" && msg.data) {
           setPlayers(Array.isArray(msg.data.players) ? msg.data.players : []);
+          setPlayersCount(
+            msg.data.playerCount && typeof msg.data.playerCount.current === "number"
+              ? {
+                  current: msg.data.playerCount.current,
+                  max: typeof msg.data.playerCount.max === "number" ? msg.data.playerCount.max : null,
+                }
+              : null
+          );
           setPlayersError(msg.data.error ?? null);
         }
         if (msg.type === "execResult" && msg.id != null) {
@@ -111,6 +126,7 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
       }
     } catch (_) {}
     setPlayers(null);
+    setPlayersCount(null);
     setPlayersError(null);
   }, []);
 
@@ -139,6 +155,7 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
   const value: ConsoleWsValue = {
     summary,
     players,
+    playersCount,
     playersError,
     sendExec,
     subscribePlayers,

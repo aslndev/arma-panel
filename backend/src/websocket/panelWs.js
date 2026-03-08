@@ -12,8 +12,11 @@ let playersIntervalId = null;
 let playersRcon = null;
 let playersRconBusy = false;
 
-function broadcastPlayers(players, error) {
-  const payload = JSON.stringify({ type: "players", data: { players: players ?? [], error: error || null } });
+function broadcastPlayers(players, error, playerCount = null) {
+  const payload = JSON.stringify({
+    type: "players",
+    data: { players: players ?? [], error: error || null, playerCount: playerCount || null },
+  });
   for (const ws of playersSubscribers) {
     try {
       if (ws.readyState === 1) ws.send(payload);
@@ -43,11 +46,11 @@ async function tickPlayersBroadcast() {
   try {
     const rcon = await ensurePlayersRcon();
     const raw = await RconUseCase.sendCommandOnConnection(rcon, "players");
-    const { players } = RconUseCase.parsePlayersResponse(raw);
-    broadcastPlayers(players, null);
+    const { players, playerCount } = RconUseCase.parsePlayersResponse(raw);
+    broadcastPlayers(players, null, playerCount);
   } catch (err) {
     playersRcon = null;
-    broadcastPlayers([], err?.message || "RCON error");
+    broadcastPlayers([], err?.message || "RCON error", null);
   } finally {
     playersRconBusy = false;
   }
