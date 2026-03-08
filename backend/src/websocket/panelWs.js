@@ -28,13 +28,18 @@ function broadcastPlayers(players, error, playerCount = null) {
 }
 
 async function ensurePlayersRcon() {
-  if (playersRcon) return playersRcon;
+  if (playersRcon) {
+    RconUseCase.setSharedPlayersRcon(playersRcon);
+    return playersRcon;
+  }
   try {
     const config = await RconUseCase.getRconConfig();
     playersRcon = await RconUseCase.connectPersistent(config.host, config.port, config.password);
+    RconUseCase.setSharedPlayersRcon(playersRcon);
     return playersRcon;
   } catch (err) {
     playersRcon = null;
+    RconUseCase.clearSharedPlayersRcon();
     throw err;
   }
 }
@@ -45,11 +50,12 @@ async function tickPlayersBroadcast() {
   playersRconBusy = true;
   try {
     const rcon = await ensurePlayersRcon();
-    const raw = await RconUseCase.sendCommandOnConnection(rcon, "players");
+    const raw = await RconUseCase.sendCommandOnConnection(rcon, "#players");
     const { players, playerCount } = RconUseCase.parsePlayersResponse(raw);
     broadcastPlayers(players, null, playerCount);
   } catch (err) {
     playersRcon = null;
+    RconUseCase.clearSharedPlayersRcon();
     broadcastPlayers([], err?.message || "RCON error", null);
   } finally {
     playersRconBusy = false;
@@ -62,17 +68,23 @@ function startPlayersBroadcast() {
   tickPlayersBroadcast();
 }
 
+/** Hanya hentikan interval #players; koneksi RCON tetap dipakai. */
 function stopPlayersBroadcast() {
   if (playersIntervalId != null) {
     clearInterval(playersIntervalId);
     playersIntervalId = null;
   }
+}
+
+/** Putus koneksi RCON (dipanggil ketika tidak ada lagi WS client). */
+function disconnectPlayersRcon() {
   if (playersRcon) {
     try {
       playersRcon.removeAllListeners?.();
       playersRcon.logout?.();
     } catch (_) {}
     playersRcon = null;
+    RconUseCase.clearSharedPlayersRcon();
   }
 }
 
@@ -104,6 +116,10 @@ function attachPanelWs(server) {
     const token = url.searchParams.get("token");
     const user = token ? verifyToken(token) : null;
     const byUser = user?.username || "admin";
+
+    if (wss.clients.size >= 1) {
+      ensurePlayersRcon().catch(() => {});
+    }
 
     const send = (obj) => {
       try {
@@ -148,16 +164,16 @@ function attachPanelWs(server) {
       } catch (_) {}
     });
 
-    ws.on("close", () => {
+    const onClientGone = () => {
       clearInterval(intervalId);
       playersSubscribers.delete(ws);
       if (playersSubscribers.size === 0) stopPlayersBroadcast();
-    });
-    ws.on("error", () => {
-      clearInterval(intervalId);
-      playersSubscribers.delete(ws);
-      if (playersSubscribers.size === 0) stopPlayersBroadcast();
-    });
+      setImmediate(() => {
+        if (wss.clients.size === 0) disconnectPlayersRcon();
+      });
+    };
+    ws.on("close", onClientGone);
+    ws.on("error", onClientGone);
   });
 }
 

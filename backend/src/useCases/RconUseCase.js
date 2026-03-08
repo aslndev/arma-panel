@@ -101,6 +101,33 @@ export async function runCommand(command, byUser = "admin") {
   return response;
 }
 
+/** Shared persistent RCON used for players list (set by panelWs). Commands like kick/ban run on this when available. */
+let sharedPlayersRcon = null;
+
+export function setSharedPlayersRcon(rcon) {
+  sharedPlayersRcon = rcon;
+}
+
+export function clearSharedPlayersRcon() {
+  sharedPlayersRcon = null;
+}
+
+/**
+ * Run command on the shared persistent RCON if connected, otherwise open a one-shot connection.
+ * Using the same connection as the players list ensures kick/ban/unban are accepted by the server.
+ */
+async function runCommandPreferredShared(command, byUser = "admin") {
+  const rcon = sharedPlayersRcon;
+  if (rcon && rcon.isRconConnected) {
+    const response = await sendCommandOnConnection(rcon, command);
+    try {
+      ActivityRepo.log({ type: "rcon", action: "command", detail: command, user: byUser });
+    } catch (_) {}
+    return response;
+  }
+  return runCommand(command, byUser);
+}
+
 /**
  * Create a persistent RCON connection and wait until connected. Returns the rcon instance.
  * Call rcon.logout() when done. Rejects on auth failure or timeout.
@@ -238,7 +265,7 @@ export function parsePlayersResponse(raw) {
 export async function listPlayers(byUser = "admin") {
   let raw = "";
   try {
-    raw = await runCommand("players", byUser);
+    raw = await runCommand("#players", byUser);
   } catch (err) {
     const msg = err?.message || String(err);
     return { players: [], raw: "", error: msg };
@@ -249,29 +276,32 @@ export async function listPlayers(byUser = "admin") {
 
 /**
  * Kick a player by numeric player ID. Arma Reforger: #kick <playerId>
+ * Uses shared persistent RCON when available so the server accepts the command.
  */
 export async function kickPlayer(identityId, reason, byUser = "admin") {
   const id = String(identityId).trim();
   const cmd = reason ? `#kick ${id} ${reason}` : `#kick ${id}`;
-  return runCommand(cmd, byUser);
+  return runCommandPreferredShared(cmd, byUser);
 }
 
 /**
  * Ban a player. Arma Reforger: #ban <playerId> <durationSeconds> (0 = permanent).
+ * Uses shared persistent RCON when available.
  */
 export async function banPlayer(identityId, reason, durationSeconds, byUser = "admin") {
   const id = String(identityId).trim();
   const duration = Math.max(0, Number(durationSeconds) || 0);
   const cmd = `#ban ${id} ${duration}`;
-  return runCommand(cmd, byUser);
+  return runCommandPreferredShared(cmd, byUser);
 }
 
 /**
- * Unban a player. Arma Reforger: #ban remove <playerId>
+ * Unban a player. Arma Reforger: #unban <playerId>
+ * Uses shared persistent RCON when available.
  */
 export async function unbanPlayer(identityId, byUser = "admin") {
   const id = String(identityId).trim();
-  return runCommand(`#ban remove ${id}`, byUser);
+  return runCommandPreferredShared(`#unban ${id}`, byUser);
 }
 
 /**
