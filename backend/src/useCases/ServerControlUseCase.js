@@ -1,51 +1,156 @@
 import { spawn } from "child_process";
+import { join, resolve } from "path";
+import { writeFile, readFile, unlink } from "fs/promises";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
 import * as ActivityRepo from "../repositories/ActivityRepository.js";
 
 const ACTIONS = ["start", "stop", "restart"];
+const PID_FILE = ".arma-server.pid";
+const MAXFPS = "60";
 
-export function runAction(action, byUser = "admin") {
-  if (!ACTIONS.includes(action)) {
-    throw new Error("Invalid action. Use start, stop, or restart.");
-  }
-  const settings = SettingsRepo.getSettings();
-  const armaServerFile = (settings?.armaServerFile ?? "").trim();
-  const serverFolder = (settings?.serverFolder ?? "").trim() || undefined;
+function getPidPath(serverFolder) {
+  return join(serverFolder, PID_FILE);
+}
 
-  if (!armaServerFile) {
-    throw new Error("ArmaServer File is not configured. Set it in Settings.");
-  }
+function getSettings() {
+  const s = SettingsRepo.getSettings();
+  const serverFolder = (s?.serverFolder ?? "").trim();
+  const configFile = (s?.configFile ?? "").trim();
+  const armaServerFile = (s?.armaServerFile ?? "").trim();
+  if (!serverFolder) throw new Error("Server folder is not configured. Set it in Settings.");
+  if (!configFile) throw new Error("Config file is not configured. Set it in Settings.");
+  if (!armaServerFile) throw new Error("ArmaServer File is not configured. Set it in Settings.");
+  return { serverFolder, configFile, armaServerFile };
+}
 
-  return new Promise((resolve, reject) => {
-    const opts = {
-      cwd: serverFolder || undefined,
+function resolveConfigPath(serverFolder, configFile) {
+  return configFile.startsWith("/") ? resolve(configFile) : join(serverFolder, configFile);
+}
+
+function resolveProfilePath(serverFolder) {
+  return join(serverFolder, "profiles", "server");
+}
+
+/** Start: run ArmaReforgerServer with -config, -profile, -maxFPS. Save PID to .arma-server.pid in server folder. */
+export async function start(byUser = "admin") {
+  const { serverFolder, configFile, armaServerFile } = getSettings();
+  const configPath = resolveConfigPath(serverFolder, configFile);
+  const profilePath = resolveProfilePath(serverFolder);
+  const executable = armaServerFile.startsWith("/")
+    ? armaServerFile
+    : join(serverFolder, armaServerFile.replace(/^\.\//, ""));
+  const args = [
+    "-config", configPath,
+    "-profile", profilePath,
+    "-maxFPS", MAXFPS,
+  ];
+
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(executable, args, {
+      cwd: serverFolder,
       stdio: "ignore",
-      detached: action === "start",
-    };
-    const child = spawn(armaServerFile, [action], opts);
-
-    if (action === "start" && child.unref) {
-      child.unref();
-    }
+      detached: true,
+    });
 
     child.on("error", (err) => {
       ActivityRepo.log({
         type: "server",
-        action: `Server ${action} failed`,
+        action: "Server start failed",
         detail: err.message,
         user: byUser,
       });
-      reject(err);
+      rejectPromise(err);
     });
 
-    child.on("spawn", () => {
+    child.on("spawn", async () => {
+      const pid = child.pid;
+      child.unref();
+      const pidPath = getPidPath(serverFolder);
+      try {
+        await writeFile(pidPath, String(pid), "utf8");
+      } catch (e) {
+        // non-fatal
+      }
       ActivityRepo.log({
         type: "server",
-        action: `Server ${action} requested`,
-        detail: `${armaServerFile} ${action}`,
+        action: "Server start requested",
+        detail: `${executable} -config ${configPath} -profile ${profilePath} -maxFPS ${MAXFPS}`,
         user: byUser,
       });
-      resolve();
+      resolvePromise();
     });
   });
+}
+
+/** Stop: read PID from .arma-server.pid and kill that process, then remove the file. */
+export async function stop(byUser = "admin") {
+  const { serverFolder } = getSettings();
+  const pidPath = getPidPath(serverFolder);
+  let pid;
+  try {
+    const buf = await readFile(pidPath, "utf8");
+    pid = parseInt(buf.trim(), 10);
+    if (Number.isNaN(pid)) throw new Error("Invalid PID");
+  } catch (e) {
+    if (e.code === "ENOENT") throw new Error("Server is not running (no PID file).");
+    throw e;
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (e) {
+    if (e.code === "ESRCH") {
+      // process already dead
+    } else {
+      throw e;
+    }
+  }
+
+  try {
+    await unlink(pidPath);
+  } catch (_) {}
+
+  ActivityRepo.log({
+    type: "server",
+    action: "Server stop requested",
+    detail: `Killed process ${pid}`,
+    user: byUser,
+  });
+}
+
+/** Restart: stop then start. */
+export async function restart(byUser = "admin") {
+  const { serverFolder } = getSettings();
+  const pidPath = getPidPath(serverFolder);
+  try {
+    const buf = await readFile(pidPath, "utf8");
+    const pid = parseInt(buf.trim(), 10);
+    if (!Number.isNaN(pid)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch (_) {}
+      await unlink(pidPath).catch(() => {});
+      // brief wait for process to exit
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } catch (_) {
+    // no PID file or already stopped
+  }
+
+  await start(byUser);
+  ActivityRepo.log({
+    type: "server",
+    action: "Server restart requested",
+    detail: "Stop then start",
+    user: byUser,
+  });
+}
+
+export async function runAction(action, byUser = "admin") {
+  if (!ACTIONS.includes(action)) {
+    throw new Error("Invalid action. Use start, stop, or restart.");
+  }
+  if (action === "start") return start(byUser);
+  if (action === "stop") return stop(byUser);
+  if (action === "restart") return restart(byUser);
 }

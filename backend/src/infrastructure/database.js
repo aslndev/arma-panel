@@ -28,6 +28,8 @@ function initSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'subuser',
+      permissions_json TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -106,11 +108,29 @@ function initSchema() {
   } catch (_) {
     /* column already exists */
   }
+  try {
+    db.exec("ALTER TABLE auth_users ADD COLUMN role TEXT NOT NULL DEFAULT 'subuser'");
+  } catch (_) {
+    /* column already exists */
+  }
+  try {
+    db.exec("ALTER TABLE auth_users ADD COLUMN permissions_json TEXT NOT NULL DEFAULT '[]'");
+  } catch (_) {
+    /* column already exists */
+  }
 
   const adminExists = db.prepare("SELECT 1 FROM auth_users WHERE username = ?").get("admin");
   if (!adminExists) {
     const hash = bcrypt.hashSync("admin", 10);
-    db.prepare("INSERT INTO auth_users (username, password_hash) VALUES (?, ?)").run("admin", hash);
+    const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules"]);
+    db.prepare("INSERT INTO auth_users (username, password_hash, role, permissions_json) VALUES (?, ?, 'admin', ?)").run("admin", hash, fullPerms);
+  } else {
+    const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules"]);
+    try {
+      db.prepare("UPDATE auth_users SET role = 'admin', permissions_json = ? WHERE username = 'admin'").run(fullPerms);
+    } catch (_) {
+      /* columns may not exist yet on very old DBs */
+    }
   }
 
   const hasAllocations = db.prepare("SELECT 1 FROM allocations LIMIT 1").get();

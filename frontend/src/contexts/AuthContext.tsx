@@ -2,8 +2,14 @@ import { createContext, useContext, useState, useCallback, useEffect, ReactNode 
 import { authApi } from "@/api/endpoints";
 import { setToken, clearToken, hasToken } from "@/api/client";
 
+export interface AuthUser {
+  id: number | string;
+  username: string;
+}
+
 interface AuthContextValue {
   isAuthenticated: boolean;
+  user: AuthUser | null;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -18,18 +24,24 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     if (!hasToken()) {
       setIsAuthenticated(false);
+      setUser(null);
       return;
     }
     authApi
       .me()
-      .then(() => setIsAuthenticated(true))
+      .then((res) => {
+        setIsAuthenticated(true);
+        setUser(res.user ? { id: res.user.id, username: res.user.username } : null);
+      })
       .catch(() => {
         clearToken();
         setIsAuthenticated(false);
+        setUser(null);
       });
   }, []);
 
@@ -39,6 +51,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const res = await authApi.login(username.trim(), password);
       setToken(res.token);
       setIsAuthenticated(true);
+      setUser(res.user ? { id: res.user.id, username: res.user.username } : null);
       return true;
     } catch {
       return false;
@@ -48,10 +61,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(() => {
     clearToken();
     setIsAuthenticated(false);
+    setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -85,10 +85,20 @@ export const configApi = {
   saveContent: (content: string) => api.put<{ success: boolean }>("/api/config/content", { content }),
 };
 
+export interface PanelUser {
+  id: string;
+  username: string;
+  role: string;
+  permissions: string[];
+  createdAt: string;
+}
+
 export const usersApi = {
-  list: () => api.get<Array<{ id: string; email: string; role: string; permissions: string[]; addedAt: string }>>("/api/users"),
-  invite: (data: { email: string; role: string; permissions: string[] }) =>
-    api.post<{ id: string; email: string; role: string; permissions: string[]; addedAt: string }>("/api/users", data),
+  list: () => api.get<PanelUser[]>("/api/users"),
+  create: (data: { username: string; password: string; role: string; permissions: string[] }) =>
+    api.post<PanelUser>("/api/users", data),
+  update: (id: string, data: { username?: string; password?: string; role?: string; permissions?: string[] }) =>
+    api.put<PanelUser>(`/api/users/${id}`, data),
   remove: (id: string) => api.delete(`/api/users/${id}`),
 };
 
@@ -140,12 +150,29 @@ export const filesApi = {
         type: string;
         size: string | null;
         modified: string;
+        mode?: string;
       }>
     >(`/api/files?path=${encodeURIComponent(path)}`),
   createFolder: (path: string, name: string) =>
     api.post("/api/files/folder", { path, name }),
   upload: (path: string, name: string, content?: string) =>
     api.post("/api/files", { path, name, content }),
+  uploadFile: async (path: string, file: File) => {
+    const base = getBaseUrl() || (typeof window !== "undefined" ? window.location.origin : "");
+    const form = new FormData();
+    form.append("file", file);
+    form.append("path", path);
+    const res = await fetch(`${base}/api/files/upload`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error((d as { error?: string }).error || "Upload failed");
+    }
+    return res.json();
+  },
   getContent: (path: string, name: string) =>
     api.get<{ content: string; name: string }>(
       `/api/files/content?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`
@@ -154,6 +181,24 @@ export const filesApi = {
     api.put("/api/files", { path, name, ...data }),
   remove: (path: string, name: string) =>
     api.delete(`/api/files?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`),
+  download: async (path: string, name: string) => {
+    const base = getBaseUrl() || (typeof window !== "undefined" ? window.location.origin : "");
+    const url = `${base}/api/files/download?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
+    if (!res.ok) throw new Error("Download failed");
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+  zip: (path: string, names: string[], outputName: string) =>
+    api.post<{ success: boolean; file: string }>("/api/files/zip", { path, names, outputName }),
+  unzip: (path: string, name: string) =>
+    api.post<{ success: boolean }>("/api/files/unzip", { path, name }),
+  chmod: (path: string, name: string, mode: string) =>
+    api.post<{ success: boolean }>("/api/files/chmod", { path, name, mode }),
 };
 
 export const backupsApi = {

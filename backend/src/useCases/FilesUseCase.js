@@ -65,3 +65,31 @@ export async function removeFile(path, name, byUser = "admin") {
     user: byUser,
   });
 }
+
+export function getDownloadStream(path, name) {
+  const basePath = getBasePath();
+  const stream = FileRepo.createReadStreamForFile(basePath, path || "", name);
+  return { stream, fileName: name };
+}
+
+export async function zipFiles(path, entryNames, outputZipName, byUser = "admin") {
+  if (!entryNames?.length) throw new Error("Select at least one file or folder");
+  const basePath = getBasePath();
+  const outPath = await FileRepo.zipToFile(basePath, path || "", entryNames, outputZipName);
+  ActivityRepo.log({ type: "file", action: "Zip Created", detail: outputZipName, user: byUser });
+  return outPath;
+}
+
+export async function unzipFile(path, zipName, byUser = "admin") {
+  const basePath = getBasePath();
+  await FileRepo.unzipFile(basePath, path || "", zipName, byUser);
+  ActivityRepo.log({ type: "file", action: "Unzip", detail: zipName, user: byUser });
+  return list(path);
+}
+
+export async function setPermission(path, name, mode, byUser = "admin") {
+  const basePath = getBasePath();
+  await FileRepo.setPermission(basePath, path || "", name, mode, byUser);
+  ActivityRepo.log({ type: "file", action: "Chmod", detail: `${name} -> ${mode}`, user: byUser });
+  return list(path);
+}

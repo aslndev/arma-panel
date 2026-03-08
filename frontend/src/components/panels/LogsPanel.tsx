@@ -20,8 +20,9 @@ const LogsPanel = () => {
   const [selectedFile, setSelectedFile] = useState<(typeof LOG_FILES)[number]["id"]>("console.log");
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
-  const [live, setLive] = useState(false);
+  const [live, setLive] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
+  const scrollRef = useRef<HTMLPreElement>(null);
 
   const logsPath = serverFolder ? `${serverFolder}/profiles/server/logs` : "";
 
@@ -94,6 +95,12 @@ const LogsPanel = () => {
     }
   }, [live, sessions, selectedSession]);
 
+  useEffect(() => {
+    if (live && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [content, live]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -155,7 +162,10 @@ const LogsPanel = () => {
         {loading ? (
           <div className="p-4 text-sm text-muted-foreground">Loading…</div>
         ) : (
-          <pre className="p-4 font-mono text-xs whitespace-pre-wrap break-words overflow-x-auto max-h-[70vh] overflow-y-auto text-foreground">
+          <pre
+            ref={scrollRef}
+            className="p-4 font-mono text-xs whitespace-pre-wrap break-words overflow-x-auto max-h-[70vh] overflow-y-auto text-foreground"
+          >
             {content || "No content"}
           </pre>
         )}

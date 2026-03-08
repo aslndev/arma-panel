@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Folder, File, ChevronRight, Upload, Plus, Download, Trash2, Edit, ArrowUp } from "lucide-react";
+import { Folder, File, ChevronRight, Upload, Plus, Download, Trash2, Edit, ArrowUp, Archive, FileArchive, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,7 @@ interface FileItem {
   type: string;
   size: string | null;
   modified: string;
+  mode?: string;
 }
 
 /** Relative path from pathStack segments (root = ""). */
@@ -60,6 +61,10 @@ const FilesPanel = () => {
   const [editContent, setEditContent] = useState("");
   const [editName, setEditName] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
+  const [zipOpen, setZipOpen] = useState(false);
+  const [zipName, setZipName] = useState("archive.zip");
+  const [chmodTarget, setChmodTarget] = useState<FileItem | null>(null);
+  const [chmodMode, setChmodMode] = useState("644");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentDir = pathFromStack(pathStack);
@@ -102,6 +107,65 @@ const FilesPanel = () => {
     setPathStack((prev) => [...prev, name]);
   };
 
+  const handleDownload = async (item: FileItem) => {
+    if (item.type === "folder") return;
+    try {
+      await filesApi.download(currentDir, item.name);
+      toast.success(`Downloaded ${item.name}`);
+    } catch (e) {
+      toast.error((e as Error).message || "Download failed");
+    }
+  };
+
+  const handleZip = async () => {
+    if (selected.length === 0) {
+      toast.error("Select at least one file or folder");
+      return;
+    }
+    const name = zipName.trim() || "archive.zip";
+    const outName = name.endsWith(".zip") ? name : name + ".zip";
+    try {
+      await filesApi.zip(currentDir, selected, outName);
+      setZipOpen(false);
+      setZipName("archive.zip");
+      setSelected([]);
+      toast.success(`Created ${outName}`);
+      fetchList(currentDir);
+    } catch (e) {
+      toast.error((e as Error).message || "Zip failed");
+    }
+  };
+
+  const handleUnzip = async (item: FileItem) => {
+    if (item.type !== "file" || !item.name.toLowerCase().endsWith(".zip")) return;
+    try {
+      await filesApi.unzip(currentDir, item.name);
+      toast.success(`Extracted ${item.name}`);
+      fetchList(currentDir);
+    } catch (e) {
+      toast.error((e as Error).message || "Unzip failed");
+    }
+  };
+
+  const handleChmod = async () => {
+    if (!chmodTarget) return;
+    const mode = chmodMode.replace(/\D/g, "");
+    if (!mode || mode.length > 4) {
+      toast.error("Use octal digits (e.g. 755, 644)");
+      return;
+    }
+    const octal = mode.length <= 3 ? mode.padStart(3, "0") : mode;
+    try {
+      await filesApi.chmod(currentDir, chmodTarget.name, octal);
+      setChmodTarget(null);
+      setChmodMode("644");
+      toast.success(`Permissions set to ${octal}`);
+      fetchList(currentDir);
+    } catch (e) {
+      toast.error((e as Error).message || "Failed to set permissions");
+    }
+  };
+
   const handleNewFolder = async () => {
     if (!newFolderName.trim()) {
       toast.error("Folder name is required");
@@ -130,10 +194,9 @@ const FilesPanel = () => {
     }
     const file = input.files[0];
     try {
-      const text = await file.text();
-      await filesApi.upload(currentDir, file.name, text);
-    } catch {
-      toast.error("Upload failed");
+      await filesApi.uploadFile(currentDir, file);
+    } catch (e) {
+      toast.error((e as Error).message || "Upload failed");
       return;
     }
     input.value = "";
@@ -203,6 +266,11 @@ const FilesPanel = () => {
           <span>{displayPath || serverFolder}</span>
         </div>
         <div className="flex gap-2">
+          {selected.length > 0 && (
+            <Button size="sm" variant="secondary" onClick={() => { setZipName("archive.zip"); setZipOpen(true); }}>
+              <Archive className="h-4 w-4 mr-1" /> Zip ({selected.length})
+            </Button>
+          )}
           <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
             <DialogTrigger asChild>
               <Button size="sm" variant="secondary">
@@ -257,21 +325,22 @@ const FilesPanel = () => {
       </div>
 
       <div className="rounded-lg border border-border bg-card overflow-hidden">
-        <div className="grid grid-cols-[auto_1fr_100px_160px_80px] gap-4 px-4 py-2.5 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <div className="grid grid-cols-[auto_1fr_80px_100px_140px_120px] gap-4 px-4 py-2.5 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
           <div className="w-5" />
           <div>Name</div>
           <div>Size</div>
           <div>Modified</div>
+          <div>Permissions</div>
           <div>Actions</div>
         </div>
 
         <button
-          className="w-full grid grid-cols-[auto_1fr_100px_160px_80px] gap-4 px-4 py-2.5 border-b border-border text-sm hover:bg-accent/50 transition-colors text-left"
+          className="w-full grid grid-cols-[auto_1fr_80px_100px_140px_120px] gap-4 px-4 py-2.5 border-b border-border text-sm hover:bg-accent/50 transition-colors text-left"
           onClick={goUp}
         >
           <ArrowUp className="h-4 w-4 text-muted-foreground" />
           <span className="text-muted-foreground">..</span>
-          <span /><span /><span />
+          <span /><span /><span /><span />
         </button>
 
         {loading ? (
@@ -280,41 +349,72 @@ const FilesPanel = () => {
           itemsHere.map((file) => (
             <div
               key={`${file.path}-${file.name}`}
-              className={`grid grid-cols-[auto_1fr_100px_160px_80px] gap-4 px-4 py-2.5 border-b border-border text-sm hover:bg-accent/50 transition-colors cursor-pointer ${
+              className={`grid grid-cols-[auto_1fr_80px_100px_140px_120px] gap-4 px-4 py-2.5 border-b border-border text-sm hover:bg-accent/50 transition-colors cursor-pointer items-center ${
                 selected.includes(file.name) ? "bg-primary/10" : ""
               }`}
-              onClick={() => file.type === "folder" ? goInto(file.name) : toggleSelect(file.name)}
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest("button, [role='checkbox']")) return;
+                if (file.type === "folder") goInto(file.name);
+                else toggleSelect(file.name);
+              }}
             >
-              <div>
+              <div className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(file.name)}
+                  onChange={() => toggleSelect(file.name)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="rounded border-border"
+                />
                 {file.type === "folder" ? (
                   <Folder className="h-4 w-4 text-primary" />
                 ) : (
                   <File className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
-              <div className="text-foreground flex items-center gap-1">
+              <div className="text-foreground flex items-center gap-1 min-w-0">
                 {file.name}
-                {file.type === "folder" && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                {file.type === "folder" && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
               </div>
               <div className="text-muted-foreground">{file.size || "—"}</div>
               <div className="text-muted-foreground">{file.modified}</div>
-              <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+              <div className="text-muted-foreground font-mono text-xs">{file.mode ?? "—"}</div>
+              <div className="flex gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
                 {file.type === "file" && (
                   <button
                     className="p-1 hover:text-primary transition-colors text-muted-foreground"
-                    onClick={() => toast.success("Download started...")}
+                    title="Download"
+                    onClick={() => handleDownload(file)}
                   >
                     <Download className="h-3.5 w-3.5" />
                   </button>
                 )}
+                {file.type === "file" && file.name.toLowerCase().endsWith(".zip") && (
+                  <button
+                    className="p-1 hover:text-primary transition-colors text-muted-foreground"
+                    title="Unzip"
+                    onClick={() => handleUnzip(file)}
+                  >
+                    <FileArchive className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <button
                   className="p-1 hover:text-primary transition-colors text-muted-foreground"
+                  title={file.type === "folder" ? "Rename" : "Edit"}
                   onClick={() => openEdit(file)}
                 >
                   <Edit className="h-3.5 w-3.5" />
                 </button>
                 <button
+                  className="p-1 hover:text-primary transition-colors text-muted-foreground"
+                  title="Set permission"
+                  onClick={() => { setChmodTarget(file); setChmodMode(file.mode || "644"); }}
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                </button>
+                <button
                   className="p-1 hover:text-destructive transition-colors text-muted-foreground"
+                  title="Delete"
                   onClick={() => setDeleteTarget(file)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -324,6 +424,48 @@ const FilesPanel = () => {
           ))
         )}
       </div>
+
+      <Dialog open={zipOpen} onOpenChange={setZipOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create zip archive</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <Label>Archive name</Label>
+            <Input
+              value={zipName}
+              onChange={(e) => setZipName(e.target.value)}
+              placeholder="archive.zip"
+            />
+            <p className="text-xs text-muted-foreground">Selected: {selected.join(", ")}</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setZipOpen(false)}>Cancel</Button>
+            <Button onClick={handleZip}>Create zip</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!chmodTarget} onOpenChange={(open) => !open && setChmodTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Set permissions</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <Label>Octal mode (e.g. 755, 644)</Label>
+            <Input
+              value={chmodMode}
+              onChange={(e) => setChmodMode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="644"
+            />
+            {chmodTarget && <p className="text-xs text-muted-foreground">{chmodTarget.name}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChmodTarget(null)}>Cancel</Button>
+            <Button onClick={handleChmod}>Apply</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editTarget} onOpenChange={(open) => !open && setEditTarget(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">

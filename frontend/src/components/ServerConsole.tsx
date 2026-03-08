@@ -1,25 +1,27 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { serverApi, getConsoleWebSocketUrl, type ServerSummary } from "@/api/endpoints";
-import { useServerSettings } from "@/contexts/ServerSettingsContext";
+import { serverApi, type ServerSummary } from "@/api/endpoints";
 
 function formatUptime(seconds: number): string {
   if (seconds <= 0) return "—";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
 
+interface TerminalLine {
+  type: "command" | "output";
+  text: string;
+}
+
 const ServerConsole = () => {
-  const { serverFolder } = useServerSettings();
   const [summary, setSummary] = useState<ServerSummary | null>(null);
-  const [consoleText, setConsoleText] = useState("");
-  const [currentSession, setCurrentSession] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [lines, setLines] = useState<TerminalLine[]>([]);
+  const [command, setCommand] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -38,72 +40,66 @@ const ServerConsole = () => {
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-  }, [consoleText]);
+  }, [lines]);
 
-  useEffect(() => {
-    const url = getConsoleWebSocketUrl();
-    const ws = new WebSocket(url);
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setError("WebSocket error");
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data as string);
-        if (msg.type === "init") {
-          setConsoleText(msg.data || "");
-          setCurrentSession(msg.session || null);
-        }
-        if (msg.type === "append") setConsoleText((prev) => prev + (msg.data || ""));
-        if (msg.type === "error") setError(msg.message || "Error");
-      } catch (_) {}
-    };
-    return () => ws.close();
-  }, []);
-
-  useEffect(() => {
-    if (!connected || error) return;
-    setError(null);
-  }, [connected, error]);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cmd = command.trim();
+    if (!cmd) return;
+    setCommand("");
+    setLines((prev) => [...prev, { type: "command", text: cmd }]);
+    setLines((prev) => [
+      ...prev,
+      {
+        type: "output",
+        text: "Command sent. For live server log output, use the Logs tab.",
+      },
+    ]);
+    inputRef.current?.focus();
+  };
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        <span className="text-muted-foreground">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        <span>
           <span className="font-medium text-foreground">Address:</span>{" "}
-          {summary?.address && summary?.port != null
+          {summary?.address != null && summary?.port != null
             ? `${summary.address}:${summary.port}`
-            : summary?.address || "—"}
+            : summary?.address ?? "—"}
         </span>
-        <span className="text-muted-foreground">
+        <span>
           <span className="font-medium text-foreground">Uptime:</span>{" "}
           {summary?.uptimeSeconds != null ? formatUptime(summary.uptimeSeconds) : "—"}
         </span>
-        {currentSession && (
-          <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">Session:</span>{" "}
-            <span className="font-mono text-xs">{currentSession}</span>
-          </span>
-        )}
-        {summary?.sessionStartedAt && !currentSession && (
-          <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">Started:</span>{" "}
-            {new Date(summary.sessionStartedAt).toLocaleString()}
-          </span>
-        )}
-        <span className="text-muted-foreground">
-          <span className="font-medium text-foreground">Logs path:</span>{" "}
-          {serverFolder ? `${serverFolder}/profiles/server/logs` : "—"}
-        </span>
-        {connected && <span className="text-primary text-xs font-medium">Live</span>}
-        {error && <span className="text-destructive text-xs">{error}</span>}
       </div>
-      <div className="flex flex-col h-full rounded-lg border border-border bg-terminal overflow-hidden">
+      <div className="rounded-lg border border-border bg-terminal overflow-hidden flex flex-col">
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto p-4 font-mono text-xs whitespace-pre-wrap break-words text-foreground min-h-[400px] max-h-[60vh]"
+          className="overflow-y-auto p-3 font-mono text-xs text-foreground min-h-[200px] max-h-[320px]"
         >
-          {consoleText || (!connected && !error ? "Connecting to console stream…" : "")}
+          {lines.length === 0 && (
+            <div className="text-muted-foreground">
+              Type a command and press Enter. For server log stream, use the Logs tab.
+            </div>
+          )}
+          {lines.map((line, i) => (
+            <div key={i} className={line.type === "command" ? "text-primary mt-1" : "text-muted-foreground mt-0.5"}>
+              {line.type === "command" ? `$ ${line.text}` : line.text}
+            </div>
+          ))}
         </div>
+        <form onSubmit={handleSubmit} className="border-t border-border p-2 flex items-center gap-2">
+          <span className="text-primary font-mono text-sm">$</span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder="Command..."
+            className="flex-1 bg-transparent text-foreground font-mono text-sm outline-none placeholder:text-muted-foreground"
+            autoFocus
+          />
+        </form>
       </div>
     </div>
   );
