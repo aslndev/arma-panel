@@ -330,6 +330,8 @@ if [[ ! -x "$EXECUTABLE" ]]; then
   exit 1
 fi
 mkdir -p "$PROFILE_PATH"
+# Run from server folder so relative paths (e.g. ./addons) match manual execution
+cd "$SERVER_FOLDER"
 exec "$EXECUTABLE" -config "$CONFIG_PATH" -profile "$PROFILE_PATH" -maxFPS 60
 WRAPPER_EOF
   chmod +x "${INSTALL_DIR}/scripts/arma-server-start.sh"
