@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
 import { writeFile, readFile, unlink, mkdir } from "fs/promises";
@@ -9,6 +9,39 @@ const ACTIONS = ["start", "stop", "restart"];
 const PID_FILE = ".arma-server.pid";
 const MAXFPS = "60";
 const EXECUTABLE_NAME = "ArmaReforgerServer";
+const SYSTEMD_GAME_SERVICE = "arma-server";
+
+/** True if game server should be controlled via systemd (install script marker or unit exists on Linux). */
+function useSystemdGameServer() {
+  try {
+    const dataDir = join(process.cwd(), "data");
+    if (existsSync(join(dataDir, ".use-systemd-game-server"))) return true;
+    if (process.platform !== "linux") return false;
+    execSync(`systemctl list-unit-files ${SYSTEMD_GAME_SERVICE}.service`, {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Write SERVER_FOLDER and CONFIG_FILE for systemd wrapper script. */
+async function writeArmaServerEnv() {
+  const { serverFolder, configFile } = getSettings();
+  const dataDir = join(process.cwd(), "data");
+  const envPath = join(dataDir, "arma-server.env");
+  const content = `SERVER_FOLDER=${serverFolder}\nCONFIG_FILE=${configFile}\n`;
+  await writeFile(envPath, content, "utf8");
+}
+
+function systemctl(cmd) {
+  execSync(`sudo -n systemctl ${cmd} ${SYSTEMD_GAME_SERVICE}`, {
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+}
 
 function getPidPath(serverFolder) {
   return join(serverFolder, PID_FILE);
@@ -35,7 +68,7 @@ function resolveProfilePath(serverFolder) {
   return join(serverFolder, "profiles", "server");
 }
 
-/** Start: {server folder}/ArmaReforgerServer -config {config file} -profile {server folder}/profiles/server -maxFPS 60 */
+/** Start: via systemd if configured, else spawn process. */
 export async function start(byUser = "admin") {
   const { serverFolder, configFile } = getSettings();
   const configPath = resolveConfigPath(serverFolder, configFile);
@@ -55,6 +88,24 @@ export async function start(byUser = "admin") {
     await mkdir(profilePath, { recursive: true });
   } catch (e) {
     throw new Error(`Could not create profile directory ${profilePath}: ${e.message}`);
+  }
+
+  if (useSystemdGameServer()) {
+    await writeArmaServerEnv();
+    try {
+      systemctl("start");
+    } catch (e) {
+      const msg = e.message || String(e);
+      ActivityRepo.log({ type: "server", action: "Server start failed", detail: msg, user: byUser });
+      throw new Error(`systemctl start ${SYSTEMD_GAME_SERVICE} failed: ${msg}`);
+    }
+    ActivityRepo.log({
+      type: "server",
+      action: "Server start requested",
+      detail: `systemctl start ${SYSTEMD_GAME_SERVICE}`,
+      user: byUser,
+    });
+    return;
   }
 
   const args = [
@@ -156,8 +207,25 @@ export async function start(byUser = "admin") {
   });
 }
 
-/** Stop: read PID from .arma-server.pid and kill that process, then remove the file. */
+/** Stop: via systemd if configured, else PID file. */
 export async function stop(byUser = "admin") {
+  if (useSystemdGameServer()) {
+    try {
+      systemctl("stop");
+    } catch (e) {
+      const msg = e.message || String(e);
+      ActivityRepo.log({ type: "server", action: "Server stop failed", detail: msg, user: byUser });
+      throw new Error(`systemctl stop ${SYSTEMD_GAME_SERVICE} failed: ${msg}`);
+    }
+    ActivityRepo.log({
+      type: "server",
+      action: "Server stop requested",
+      detail: `systemctl stop ${SYSTEMD_GAME_SERVICE}`,
+      user: byUser,
+    });
+    return;
+  }
+
   const { serverFolder } = getSettings();
   const pidPath = getPidPath(serverFolder);
   let pid;
@@ -192,8 +260,26 @@ export async function stop(byUser = "admin") {
   });
 }
 
-/** Restart: stop then start. */
+/** Restart: via systemd if configured, else stop then start. */
 export async function restart(byUser = "admin") {
+  if (useSystemdGameServer()) {
+    await writeArmaServerEnv();
+    try {
+      systemctl("restart");
+    } catch (e) {
+      const msg = e.message || String(e);
+      ActivityRepo.log({ type: "server", action: "Server restart failed", detail: msg, user: byUser });
+      throw new Error(`systemctl restart ${SYSTEMD_GAME_SERVICE} failed: ${msg}`);
+    }
+    ActivityRepo.log({
+      type: "server",
+      action: "Server restart requested",
+      detail: `systemctl restart ${SYSTEMD_GAME_SERVICE}`,
+      user: byUser,
+    });
+    return;
+  }
+
   const { serverFolder } = getSettings();
   const pidPath = getPidPath(serverFolder);
   try {
@@ -204,12 +290,9 @@ export async function restart(byUser = "admin") {
         process.kill(pid, "SIGTERM");
       } catch (_) {}
       await unlink(pidPath).catch(() => {});
-      // brief wait for process to exit
       await new Promise((r) => setTimeout(r, 2000));
     }
-  } catch (_) {
-    // no PID file or already stopped
-  }
+  } catch (_) {}
 
   await start(byUser);
   ActivityRepo.log({

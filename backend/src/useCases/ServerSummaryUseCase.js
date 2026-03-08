@@ -1,5 +1,6 @@
 import { readdir, stat, readFile } from "fs/promises";
 import { join, resolve } from "path";
+import { existsSync } from "fs";
 import { execSync } from "child_process";
 import os from "os";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
@@ -82,8 +83,35 @@ export function sessionNameFromDir(dirName) {
   return dirName.slice(5);
 }
 
-/** True if .arma-server.pid exists and that process is still running */
+/** True if game server is managed via systemd (marker file or unit exists on Linux). */
+function useSystemdGameServer() {
+  try {
+    const dataDir = join(process.cwd(), "data");
+    if (existsSync(join(dataDir, ".use-systemd-game-server"))) return true;
+    if (process.platform !== "linux") return false;
+    execSync("systemctl list-unit-files arma-server.service", {
+      encoding: "utf8",
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True if game server is running (systemd active or PID file + process alive). */
 async function isServerProcessRunning() {
+  if (useSystemdGameServer()) {
+    try {
+      const out = execSync("sudo -n systemctl is-active arma-server", {
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+      return (out && out.trim()) === "active";
+    } catch {
+      return false;
+    }
+  }
   try {
     const folder = getServerFolder();
     const pidPath = join(folder, PID_FILE);

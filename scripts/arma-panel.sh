@@ -5,6 +5,7 @@
 set -e
 
 SERVICE_NAME="arma-panel"
+ARMA_SERVER_SERVICE="arma-server"
 INSTALL_DIR="${ARMA_PANEL_INSTALL_DIR:-/opt/arma-panel}"
 # Default: user who ran sudo (SUDO_USER) or current user
 PANEL_USER="${ARMA_PANEL_USER:-${SUDO_USER:-$USER}}"
@@ -258,7 +259,7 @@ check_and_install_deps() {
   return 0
 }
 
-# Systemd service file content
+# Systemd service file content (panel)
 get_systemd_content() {
   cat << EOF
 [Unit]
@@ -279,6 +280,59 @@ Environment=STATIC_DIR=${INSTALL_DIR}/frontend/dist
 [Install]
 WantedBy=multi-user.target
 EOF
+}
+
+# Systemd service for Arma Reforger game server (runs separately so panel updates don't stop the game)
+get_arma_server_systemd_content() {
+  cat << EOF
+[Unit]
+Description=Arma Reforger game server (managed by Arma Panel)
+After=network.target
+
+[Service]
+Type=simple
+User=${PANEL_USER}
+Environment=ARMA_PANEL_INSTALL_DIR=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/scripts/arma-server-start.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+# Wrapper script: reads SERVER_FOLDER and CONFIG_FILE from panel data, runs ArmaReforgerServer
+write_arma_server_start_script() {
+  cat << 'WRAPPER_EOF' > "${INSTALL_DIR}/scripts/arma-server-start.sh"
+#!/usr/bin/env bash
+set -e
+INSTALL_DIR="${ARMA_PANEL_INSTALL_DIR:-/opt/arma-panel}"
+ENV_FILE="${INSTALL_DIR}/backend/data/arma-server.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Missing $ENV_FILE (set Server Folder and Config File in panel Settings, then Start the server)" >&2
+  exit 1
+fi
+source "$ENV_FILE"
+if [[ -z "$SERVER_FOLDER" ]]; then
+  echo "SERVER_FOLDER not set in $ENV_FILE" >&2
+  exit 1
+fi
+if [[ "$CONFIG_FILE" = /* ]]; then
+  CONFIG_PATH="$CONFIG_FILE"
+else
+  CONFIG_PATH="${SERVER_FOLDER}/${CONFIG_FILE}"
+fi
+PROFILE_PATH="${SERVER_FOLDER}/profiles/server"
+EXECUTABLE="${SERVER_FOLDER}/ArmaReforgerServer"
+if [[ ! -x "$EXECUTABLE" ]]; then
+  echo "Executable not found: $EXECUTABLE" >&2
+  exit 1
+fi
+mkdir -p "$PROFILE_PATH"
+exec "$EXECUTABLE" -config "$CONFIG_PATH" -profile "$PROFILE_PATH" -maxFPS 60
+WRAPPER_EOF
+  chmod +x "${INSTALL_DIR}/scripts/arma-server-start.sh"
 }
 
 cmd_install() {
@@ -337,10 +391,21 @@ cmd_install() {
     fi
   fi
 
-  info "Creating systemd service..."
+  info "Creating systemd service (panel)..."
   get_systemd_content > "/etc/systemd/system/${SERVICE_NAME}.service"
   systemctl daemon-reload
   systemctl enable "$SERVICE_NAME"
+
+  info "Creating Arma Reforger game server systemd service (runs separately; panel Start/Stop will use it)..."
+  write_arma_server_start_script
+  get_arma_server_systemd_content > "/etc/systemd/system/${ARMA_SERVER_SERVICE}.service"
+  touch "${INSTALL_DIR}/backend/data/.use-systemd-game-server"
+  systemctl daemon-reload
+  systemctl enable "$ARMA_SERVER_SERVICE"
+  info "Allowing ${PANEL_USER} to control game server via sudo (for panel Start/Stop)..."
+  echo "${PANEL_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl stop ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl restart ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl status ${ARMA_SERVER_SERVICE}, /usr/bin/systemctl is-active ${ARMA_SERVER_SERVICE}" > "/etc/sudoers.d/arma-panel-${ARMA_SERVER_SERVICE}"
+  chmod 440 "/etc/sudoers.d/arma-panel-${ARMA_SERVER_SERVICE}"
+  info "Game server: systemctl start|stop|restart|status $ARMA_SERVER_SERVICE (or use panel Start/Stop)"
 
   info "Setting ownership to ${PANEL_USER} (service user) so the panel can write to the database..."
   chown -R "${PANEL_USER}:${PANEL_USER}" "$INSTALL_DIR"
@@ -351,6 +416,7 @@ cmd_install() {
   info "Installation complete."
   info "Panel URL: http://localhost:3001 (or this host's IP)"
   info "Commands: systemctl start|stop|restart|status $SERVICE_NAME"
+  info "Game server runs as $ARMA_SERVER_SERVICE (start/stop from panel or systemctl). Updates to the panel will not stop the game server."
   info "Or use this script: $0 start | stop | restart | status"
 }
 
@@ -358,19 +424,38 @@ cmd_uninstall() {
   info "Uninstalling Arma Panel..."
 
   if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-    info "Stopping service..."
+    info "Stopping panel service..."
     systemctl stop "$SERVICE_NAME"
+  fi
+
+  if systemctl is-active --quiet "$ARMA_SERVER_SERVICE" 2>/dev/null; then
+    info "Stopping game server service..."
+    systemctl stop "$ARMA_SERVER_SERVICE"
   fi
 
   if systemctl is-enabled --quiet "$SERVICE_NAME" 2>/dev/null; then
     systemctl disable "$SERVICE_NAME"
   fi
+  if systemctl is-enabled --quiet "$ARMA_SERVER_SERVICE" 2>/dev/null; then
+    systemctl disable "$ARMA_SERVER_SERVICE"
+  fi
 
+  local need_reload=0
   if [[ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
     rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
-    systemctl daemon-reload
-    info "Systemd service removed."
+    need_reload=1
+    info "Panel systemd service removed."
   fi
+  if [[ -f "/etc/systemd/system/${ARMA_SERVER_SERVICE}.service" ]]; then
+    rm -f "/etc/systemd/system/${ARMA_SERVER_SERVICE}.service"
+    need_reload=1
+    info "Game server systemd service removed."
+  fi
+  if [[ -f "/etc/sudoers.d/arma-panel-${ARMA_SERVER_SERVICE}" ]]; then
+    rm -f "/etc/sudoers.d/arma-panel-${ARMA_SERVER_SERVICE}"
+    info "Sudoers rule for game server removed."
+  fi
+  [[ $need_reload -eq 1 ]] && systemctl daemon-reload
 
   if [[ -d "$INSTALL_DIR" ]]; then
     read -p "Remove install directory ${INSTALL_DIR}? [y/N] " -n 1 -r
@@ -432,6 +517,11 @@ cmd_update() {
   info "Building frontend..."
   (cd "$INSTALL_DIR/frontend" && npm install && VITE_API_URL= npm run build)
 
+  if [[ -f "$INSTALL_DIR/backend/data/.use-systemd-game-server" ]]; then
+    info "Recreating game server wrapper script..."
+    write_arma_server_start_script
+  fi
+
   chown -R "${PANEL_USER}:${PANEL_USER}" "$INSTALL_DIR"
 
   info "Restarting Arma Panel..."
@@ -447,14 +537,14 @@ cmd_status() {
 cmd_usage() {
   echo "Usage: $0 { install | update | uninstall | start | restart | stop | status }"
   echo ""
-  echo "  install   - Install panel to ${INSTALL_DIR}, build frontend, create and enable systemd service"
+  echo "  install   - Install panel to ${INSTALL_DIR}, build frontend, create panel + game server systemd services"
   echo "  update    - Rebuild and restart (copy latest code, npm install, build frontend, restart; keeps DB)"
-  echo "  uninstall - Stop service, remove systemd unit, optionally remove install dir"
+  echo "  uninstall - Stop services, remove systemd units, optionally remove install dir"
   echo "  start     - Start the panel (systemctl start ${SERVICE_NAME})"
   echo "  restart   - Restart the panel (systemctl restart ${SERVICE_NAME})"
   echo "  stop      - Stop the panel (systemctl stop ${SERVICE_NAME})"
   echo "  exit      - Alias for stop"
-  echo "  status    - Show service status"
+  echo "  status    - Show panel service status. Game server: systemctl status ${ARMA_SERVER_SERVICE}"
   echo ""
   echo "Environment:"
   echo "  ARMA_PANEL_INSTALL_DIR       Install path (default: /opt/arma-panel)"
