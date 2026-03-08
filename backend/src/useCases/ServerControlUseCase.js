@@ -64,6 +64,13 @@ export async function start(byUser = "admin") {
   ];
 
   return new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    const settle = (fn) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
+
     const child = spawn(executable, args, {
       cwd: serverFolder,
       stdio: "ignore",
@@ -80,12 +87,27 @@ export async function start(byUser = "admin") {
       const msg = err.code === "ENOENT"
         ? `Executable not found: ${executable}. Check Settings > ArmaServer File.`
         : err.message;
-      rejectPromise(new Error(msg));
+      settle(() => rejectPromise(new Error(msg)));
+    });
+
+    child.on("exit", (code, signal) => {
+      if (settled) return;
+      const pidPath = getPidPath(serverFolder);
+      unlink(pidPath).catch(() => {});
+      ActivityRepo.log({
+        type: "server",
+        action: "Server start failed",
+        detail: `Process exited immediately (code=${code}, signal=${signal})`,
+        user: byUser,
+      });
+      const msg = code != null && code !== 0
+        ? `Server process exited with code ${code}. Check Logs tab and paths (config, profile).`
+        : `Server process exited immediately. Check Logs tab and Settings (server folder, ArmaServer File, config).`;
+      settle(() => rejectPromise(new Error(msg)));
     });
 
     child.on("spawn", async () => {
       const pid = child.pid;
-      child.unref();
       const pidPath = getPidPath(serverFolder);
       try {
         await writeFile(pidPath, String(pid), "utf8");
@@ -98,7 +120,24 @@ export async function start(byUser = "admin") {
         detail: `${executable} -config ${configPath} -profile ${profilePath} -maxFPS ${MAXFPS}`,
         user: byUser,
       });
-      resolvePromise();
+      // Only resolve after a short delay; if process is still alive, start succeeded
+      setTimeout(() => {
+        if (settled) return;
+        try {
+          process.kill(pid, 0);
+        } catch (e) {
+          if (e.code === "ESRCH") {
+            settle(() =>
+              rejectPromise(
+                new Error("Server process exited shortly after start. Check Logs tab and Settings.")
+              )
+            );
+            return;
+          }
+        }
+        child.unref();
+        settle(() => resolvePromise());
+      }, 2500);
     });
   });
 }
