@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import { join, resolve } from "path";
+import { existsSync } from "fs";
 import { writeFile, readFile, unlink } from "fs/promises";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
 import * as ActivityRepo from "../repositories/ActivityRepository.js";
@@ -23,12 +24,23 @@ function getSettings() {
   return { serverFolder, configFile, armaServerFile };
 }
 
+function isAbsolutePath(p) {
+  return p.startsWith("/");
+}
+
 function resolveConfigPath(serverFolder, configFile) {
-  return configFile.startsWith("/") ? resolve(configFile) : join(serverFolder, configFile);
+  return isAbsolutePath(configFile) ? resolve(configFile) : join(serverFolder, configFile);
 }
 
 function resolveProfilePath(serverFolder) {
   return join(serverFolder, "profiles", "server");
+}
+
+/** Resolve executable path (Linux: absolute or relative to server folder). */
+function resolveExecutable(serverFolder, armaServerFile) {
+  return isAbsolutePath(armaServerFile)
+    ? armaServerFile
+    : join(serverFolder, armaServerFile.replace(/^\.\//, ""));
 }
 
 /** Start: run ArmaReforgerServer with -config, -profile, -maxFPS. Save PID to .arma-server.pid in server folder. */
@@ -36,9 +48,15 @@ export async function start(byUser = "admin") {
   const { serverFolder, configFile, armaServerFile } = getSettings();
   const configPath = resolveConfigPath(serverFolder, configFile);
   const profilePath = resolveProfilePath(serverFolder);
-  const executable = armaServerFile.startsWith("/")
-    ? armaServerFile
-    : join(serverFolder, armaServerFile.replace(/^\.\//, ""));
+  const executable = resolveExecutable(serverFolder, armaServerFile);
+
+  if (!existsSync(serverFolder)) {
+    throw new Error(`Server folder does not exist: ${serverFolder}`);
+  }
+  if (!existsSync(executable)) {
+    throw new Error(`ArmaServer executable not found: ${executable}. Check Settings > ArmaServer File.`);
+  }
+
   const args = [
     "-config", configPath,
     "-profile", profilePath,
@@ -59,7 +77,10 @@ export async function start(byUser = "admin") {
         detail: err.message,
         user: byUser,
       });
-      rejectPromise(err);
+      const msg = err.code === "ENOENT"
+        ? `Executable not found: ${executable}. Check Settings > ArmaServer File.`
+        : err.message;
+      rejectPromise(new Error(msg));
     });
 
     child.on("spawn", async () => {
