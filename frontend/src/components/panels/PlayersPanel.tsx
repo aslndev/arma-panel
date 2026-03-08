@@ -155,7 +155,7 @@ const PlayersPanel = () => {
               <p className="text-center text-destructive font-medium text-sm">RCON error</p>
               <p className="text-center text-muted-foreground text-sm break-all px-4">{playersError}</p>
               <p className="text-center text-muted-foreground text-xs mt-4">
-                Check Config Editor → RCON: address (use 127.0.0.1 if panel and server are on the same machine), port (e.g. 19999), and password. Arma Reforger may use BattleEye RCON; if connection still fails, the server might need a different RCON protocol.
+                Check Config Editor → RCON: address (use 127.0.0.1 if panel and server are on the same machine), port (e.g. 19999), and password. Panel uses BattleEye RCON (UDP).
               </p>
             </div>
           ) : players.length === 0 ? (

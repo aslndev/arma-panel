@@ -1,8 +1,9 @@
-import Rcon from "rcon";
+import RCON from "battleye-node";
 import * as ConfigUseCase from "./ConfigUseCase.js";
 import * as ActivityRepo from "../repositories/ActivityRepository.js";
 
-const RCON_TIMEOUT_MS = 10000;
+const RCON_TIMEOUT_MS = 15000;
+const RCON_RESPONSE_IDLE_MS = 600;
 
 /**
  * Read RCON connection params from the server config file (same file as Config Editor).
@@ -28,38 +29,63 @@ export async function getRconConfig() {
 }
 
 /**
- * Execute a single RCON command. Uses the 'rcon' npm package (TCP Source-style RCON).
- * Reforger may use a compatible protocol; if connection fails, RCON config or protocol may differ.
+ * Execute a single RCON command using battleye-node (BattleEye UDP RCON).
+ * Used by Arma Reforger and other BattleEye-protected servers.
  */
 function sendCommand(host, port, password, command) {
   return new Promise((resolve, reject) => {
-    const client = new Rcon(host, port, password, { tcp: true, challenge: false });
     let resolved = false;
-    let responseAcc = "";
-    let responseTimer = null;
+    const cleanup = () => {
+      try {
+        rcon.removeAllListeners();
+        rcon.logout();
+      } catch (_) {}
+    };
     const done = (err, result) => {
       if (resolved) return;
       resolved = true;
-      if (responseTimer) clearTimeout(responseTimer);
       clearTimeout(timeoutId);
-      try { client.disconnect(); } catch (_) {}
+      clearTimeout(idleId);
+      cleanup();
       if (err) reject(err);
       else resolve(result ?? "");
     };
+
+    const rcon = new RCON({
+      address: host,
+      port,
+      password,
+      connectionType: "udp4",
+      connectionTimeout: Math.max(RCON_TIMEOUT_MS, 50000),
+      connectionInterval: 5000,
+      keepAliveInterval: 10000,
+    });
+
     const timeoutId = setTimeout(() => done(new Error("RCON command timeout")), RCON_TIMEOUT_MS);
-    client.on("error", (err) => {
-      clearTimeout(timeoutId);
-      if (responseTimer) clearTimeout(responseTimer);
-      done(err);
+    let responseChunks = [];
+    let idleId = null;
+
+    rcon.on("onConnect", (connected) => {
+      if (!connected) {
+        done(new Error("RCON authentication failed"));
+        return;
+      }
+      responseChunks = [];
+      rcon.commandSend(command);
+      idleId = setTimeout(() => done(null, responseChunks.join("")), RCON_RESPONSE_IDLE_MS);
     });
-    client.on("end", () => done(null, responseAcc));
-    client.on("response", (str) => {
-      if (typeof str === "string") responseAcc += str;
-      if (responseTimer) clearTimeout(responseTimer);
-      responseTimer = setTimeout(() => done(null, responseAcc), 300);
+
+    rcon.on("message", (msg) => {
+      if (typeof msg === "string") responseChunks.push(msg);
+      if (idleId) clearTimeout(idleId);
+      idleId = setTimeout(() => done(null, responseChunks.join("")), RCON_RESPONSE_IDLE_MS);
     });
-    client.on("auth", () => client.send(command));
-    client.connect();
+
+    rcon.on("error", (msg) => {
+      done(new Error(typeof msg === "string" ? msg : "RCON error"));
+    });
+
+    rcon.login();
   });
 }
 
