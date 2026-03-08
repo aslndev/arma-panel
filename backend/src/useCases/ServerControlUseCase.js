@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import { join, resolve } from "path";
 import { existsSync } from "fs";
-import { writeFile, readFile, unlink } from "fs/promises";
+import { writeFile, readFile, unlink, mkdir } from "fs/promises";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
 import * as ActivityRepo from "../repositories/ActivityRepository.js";
 
@@ -56,6 +56,14 @@ export async function start(byUser = "admin") {
   if (!existsSync(executable)) {
     throw new Error(`ArmaServer executable not found: ${executable}. Check Settings > ArmaServer File.`);
   }
+  if (!existsSync(configPath)) {
+    throw new Error(`Config file not found: ${configPath}. Check Settings > Config File.`);
+  }
+  try {
+    await mkdir(profilePath, { recursive: true });
+  } catch (e) {
+    throw new Error(`Could not create profile directory ${profilePath}: ${e.message}`);
+  }
 
   const args = [
     "-config", configPath,
@@ -71,11 +79,17 @@ export async function start(byUser = "admin") {
       fn();
     };
 
+    const stderrChunks = [];
     const child = spawn(executable, args, {
       cwd: serverFolder,
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
+
+    if (child.stderr) {
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+    }
 
     child.on("error", (err) => {
       ActivityRepo.log({
@@ -94,15 +108,23 @@ export async function start(byUser = "admin") {
       if (settled) return;
       const pidPath = getPidPath(serverFolder);
       unlink(pidPath).catch(() => {});
+      const stderrText = stderrChunks.join("").trim();
+      const errSnippet = stderrText.length > 800 ? stderrText.slice(-800) : stderrText;
       ActivityRepo.log({
         type: "server",
         action: "Server start failed",
-        detail: `Process exited immediately (code=${code}, signal=${signal})`,
+        detail: `Process exited (code=${code}, signal=${signal})${errSnippet ? ": " + errSnippet.slice(0, 200) : ""}`,
         user: byUser,
       });
-      const msg = code != null && code !== 0
-        ? `Server process exited with code ${code}. Check Logs tab and paths (config, profile).`
-        : `Server process exited immediately. Check Logs tab and Settings (server folder, ArmaServer File, config).`;
+      let msg =
+        code != null && code !== 0
+          ? `Server process exited with code ${code}.`
+          : "Server process exited immediately.";
+      if (errSnippet) {
+        msg += ` Output: ${errSnippet.replace(/\s+/g, " ").slice(0, 500)}`;
+      } else {
+        msg += " Check Logs tab and paths (config, profile).";
+      }
       settle(() => rejectPromise(new Error(msg)));
     });
 
