@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark theme - subtle green accent, clean & professional.
+   All colors MUST be HSL. */
+
+@layer base {
+  :root {
+    --background: 220 18% 8%;
+    --foreground: 220 12% 92%;
+    --card: 220 16% 11%;
+    --card-foreground: 220 12% 92%;
+    --popover: 220 16% 11%;
+    --popover-foreground: 220 12% 92%;
+    --primary: 158 42% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 16%;
+    --secondary-foreground: 220 12% 88%;
+    --muted: 220 14% 16%;
+    --muted-foreground: 220 10% 52%;
+    --accent: 220 14% 18%;
+    --accent-foreground: 220 12% 88%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 42% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 220 14% 20%;
+    --input: 220 14% 18%;
+    --ring: 158 42% 38%;
+    --radius: 0.5rem;
+    --terminal: 220 20% 6%;
+    --terminal-text: 158 35% 52%;
+    --sidebar-background: 220 18% 10%;
+    --sidebar-foreground: 220 12% 88%;
+    --sidebar-primary: 158 42% 38%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 14%;
+    --sidebar-accent-foreground: 220 12% 88%;
+    --sidebar-border: 220 14% 18%;
+    --sidebar-ring: 158 42% 38%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "JetBrains Mono", "Fira Code", "Consolas", "Monaco", monospace;
+  }
+
+}
