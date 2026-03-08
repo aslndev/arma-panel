@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Gamepad2, FolderOpen, FileText, Terminal, LayoutDashboard, Server } from "lucide-react";
+import { Gamepad2, FolderOpen, FileText, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,16 +15,11 @@ const Setup = () => {
     setServerFolder,
     configFile,
     setConfigFile,
-    steamcmdPath,
-    setSteamcmdPath,
-    armaServerFile,
     completeSetup,
   } = useServerSettings();
   const [name, setName] = useState(panelName);
   const [folder, setFolder] = useState(serverFolder);
   const [config, setConfig] = useState(configFile);
-  const [steam, setSteam] = useState(steamcmdPath);
-  const [arma, setArma] = useState(armaServerFile);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -44,18 +39,12 @@ const Setup = () => {
       setError("Config file path is required");
       return;
     }
-    if (!steam.trim()) {
-      setError("SteamCMD path is required");
-      return;
-    }
     setLoading(true);
     try {
       await completeSetup({
         panelName: name.trim(),
         serverFolder: folder.trim(),
         configFile: config.trim(),
-        steamcmdPath: steam.trim(),
-        armaServerFile: arma.trim(),
       });
       navigate("/", { replace: true });
     } catch {
@@ -127,36 +116,6 @@ const Setup = () => {
                   onChange={(e) => setConfig(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">Path to server config file — used by Config Editor</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="steamcmdPath" className="flex items-center gap-2">
-                  <Terminal className="h-4 w-4 text-primary" />
-                  SteamCMD path
-                </Label>
-                <Input
-                  id="steamcmdPath"
-                  type="text"
-                  placeholder="/usr/games/steamcmd"
-                  value={steam}
-                  onChange={(e) => setSteam(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">Path to SteamCMD binary for server updates</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="armaServerFile" className="flex items-center gap-2">
-                  <Server className="h-4 w-4 text-primary" />
-                  ArmaServer File
-                </Label>
-                <Input
-                  id="armaServerFile"
-                  type="text"
-                  placeholder="/path/to/armaserver or armaserver"
-                  value={arma}
-                  onChange={(e) => setArma(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">Executable for Start / Stop / Restart</p>
               </div>
 
               {error && (

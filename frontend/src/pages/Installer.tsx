@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Gamepad2, FolderOpen, FileText, Terminal, LayoutDashboard, User, Lock, ChevronRight, ChevronLeft, Server } from "lucide-react";
+import { Gamepad2, FolderOpen, FileText, LayoutDashboard, User, Lock, ChevronRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,8 +17,6 @@ const Installer = () => {
   const [name, setName] = useState("Arma Panel");
   const [folder, setFolder] = useState("/home/arma/server");
   const [config, setConfig] = useState("/home/arma/server/config.json");
-  const [steam, setSteam] = useState("/usr/games/steamcmd");
-  const [armaServerFile, setArmaServerFile] = useState("");
   const [adminUsername, setAdminUsername] = useState("admin");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminPasswordConfirm, setAdminPasswordConfirm] = useState("");
@@ -26,6 +24,7 @@ const Installer = () => {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
   const navigate = useNavigate();
+  const step2DetectDone = useRef(false);
 
   useEffect(() => {
     setupApi
@@ -39,6 +38,20 @@ const Installer = () => {
       })
       .catch(() => setChecking(false));
   }, [navigate]);
+
+  useEffect(() => {
+    if (step !== 2 || step2DetectDone.current) return;
+    step2DetectDone.current = true;
+    setupApi
+      .detect()
+      .then((d) => {
+        if (d?.serverFolder) {
+          setFolder(d.serverFolder);
+          if (d.configFile) setConfig(d.configFile);
+        }
+      })
+      .catch(() => {});
+  }, [step]);
 
   const validateStep1 = (): boolean => {
     setError("");
@@ -75,10 +88,6 @@ const Installer = () => {
       setError("Config file path is required");
       return false;
     }
-    if (!steam.trim()) {
-      setError("SteamCMD path is required");
-      return false;
-    }
     return true;
   };
 
@@ -105,8 +114,6 @@ const Installer = () => {
         panelName: name.trim(),
         serverFolder: folder.trim(),
         configFile: config.trim(),
-        steamcmdPath: steam.trim(),
-        armaServerFile: armaServerFile.trim(),
         adminUsername: adminUsername.trim(),
         adminPassword,
       });
@@ -261,36 +268,6 @@ const Installer = () => {
                       onChange={(e) => setConfig(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">Path to server config file — used by Config Editor</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="steamcmdPath" className="flex items-center gap-2">
-                      <Terminal className="h-4 w-4 text-primary" />
-                      SteamCMD path
-                    </Label>
-                    <Input
-                      id="steamcmdPath"
-                      type="text"
-                      placeholder="/usr/games/steamcmd"
-                      value={steam}
-                      onChange={(e) => setSteam(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">Path to SteamCMD binary for server updates</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="armaServerFile" className="flex items-center gap-2">
-                      <Server className="h-4 w-4 text-primary" />
-                      ArmaServer File
-                    </Label>
-                    <Input
-                      id="armaServerFile"
-                      type="text"
-                      placeholder="/path/to/armaserver or armaserver"
-                      value={armaServerFile}
-                      onChange={(e) => setArmaServerFile(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">Executable for Start / Stop / Restart (e.g. armaserver start, armaserver stop, armaserver restart)</p>
                   </div>
 
                 {error && (

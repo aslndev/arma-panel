@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
+import * as SettingsUseCase from "../useCases/SettingsUseCase.js";
 import * as AuthUserRepo from "../repositories/AuthUserRepository.js";
 
 export function getStatus(req, res) {
@@ -7,6 +8,21 @@ export function getStatus(req, res) {
   res.json({
     setupComplete: settings?.setupComplete ?? false,
   });
+}
+
+/** Public: detect server folder and config (for installer auto-fill). No auth required. */
+export async function detect(req, res) {
+  try {
+    const detected = await SettingsUseCase.detectServer();
+    return res.json(detected);
+  } catch (err) {
+    return res.status(500).json({
+      serverFolder: null,
+      configFile: null,
+      installStatus: "not_found",
+      installMessage: err?.message || "Detection failed",
+    });
+  }
 }
 
 export function complete(req, res) {
@@ -32,8 +48,6 @@ export function complete(req, res) {
     panelName: body.panelName ?? "Arma Panel",
     serverFolder: body.serverFolder ?? "/home/arma/server",
     configFile: body.configFile ?? "/home/arma/server/config.json",
-    steamcmdPath: body.steamcmdPath ?? "/usr/games/steamcmd",
-    armaServerFile: body.armaServerFile ?? "",
     setupComplete: true,
   });
   res.json({ success: true });

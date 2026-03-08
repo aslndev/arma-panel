@@ -7,8 +7,6 @@ interface StoredSettings {
   panelName?: string;
   serverFolder?: string;
   configFile?: string;
-  steamcmdPath?: string;
-  armaServerFile?: string;
   setupComplete?: boolean;
 }
 
@@ -19,10 +17,6 @@ interface ServerSettings {
   setServerFolder: (v: string) => void;
   configFile: string;
   setConfigFile: (v: string) => void;
-  steamcmdPath: string;
-  setSteamcmdPath: (v: string) => void;
-  armaServerFile: string;
-  setArmaServerFile: (v: string) => void;
   setupComplete: boolean;
   /** Set when auto-detect finds LinuxGSM install incomplete/failed (script present but serverfiles or binary missing). */
   detectInstallMessage: string | null;
@@ -42,8 +36,6 @@ const defaults = {
   panelName: "Arma Panel",
   serverFolder: "/home/arma/server",
   configFile: "/home/arma/server/config.json",
-  steamcmdPath: "/usr/games/steamcmd",
-  armaServerFile: "",
   setupComplete: false,
 };
 
@@ -52,8 +44,6 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
   const [panelName, setPanelName] = useState(defaults.panelName);
   const [serverFolder, setServerFolder] = useState(defaults.serverFolder);
   const [configFile, setConfigFile] = useState(defaults.configFile);
-  const [steamcmdPath, setSteamcmdPath] = useState(defaults.steamcmdPath);
-  const [armaServerFile, setArmaServerFile] = useState(defaults.armaServerFile);
   const [setupComplete, setSetupComplete] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [detectInstallMessage, setDetectInstallMessage] = useState<string | null>(null);
@@ -71,8 +61,6 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
       setPanelName(s.panelName ?? defaults.panelName);
       setServerFolder(folder || defaults.serverFolder);
       setConfigFile(config || defaults.configFile);
-      setSteamcmdPath(s.steamcmdPath ?? defaults.steamcmdPath);
-      setArmaServerFile(s.armaServerFile ?? defaults.armaServerFile);
       setSetupComplete(s.setupComplete ?? false);
       if (useDefaults) {
         try {
@@ -114,17 +102,13 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
         panelName: data.panelName ?? panelName,
         serverFolder: data.serverFolder ?? serverFolder,
         configFile: data.configFile ?? configFile,
-        steamcmdPath: data.steamcmdPath ?? steamcmdPath,
-        armaServerFile: data.armaServerFile ?? armaServerFile,
       });
       setPanelName(s.panelName);
       setServerFolder(s.serverFolder);
       setConfigFile(s.configFile);
-      setSteamcmdPath(s.steamcmdPath);
-      setArmaServerFile(s.armaServerFile ?? "");
       setSetupComplete(s.setupComplete);
     },
-    [panelName, serverFolder, configFile, steamcmdPath, armaServerFile]
+    [panelName, serverFolder, configFile]
   );
 
   const value: ServerSettings = {
@@ -134,10 +118,6 @@ export const ServerSettingsProvider = ({ children }: { children: ReactNode }) =>
     setServerFolder,
     configFile,
     setConfigFile,
-    steamcmdPath,
-    setSteamcmdPath,
-    armaServerFile,
-    setArmaServerFile,
     setupComplete: loaded ? setupComplete : false,
     detectInstallMessage,
     completeSetup,

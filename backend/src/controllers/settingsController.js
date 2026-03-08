@@ -24,8 +24,6 @@ export function completeSetup(req, res) {
     panelName: body.panelName,
     serverFolder: body.serverFolder,
     configFile: body.configFile,
-    steamcmdPath: body.steamcmdPath,
-    armaServerFile: body.armaServerFile,
   });
   res.json(settings);
 }
@@ -36,8 +34,6 @@ export function updateSettings(req, res) {
     panelName: body.panelName,
     serverFolder: body.serverFolder,
     configFile: body.configFile,
-    steamcmdPath: body.steamcmdPath,
-    armaServerFile: body.armaServerFile,
   });
   res.json(settings);
 }

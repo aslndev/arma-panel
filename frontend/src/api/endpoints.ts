@@ -9,20 +9,17 @@ export interface SettingsResponse {
   panelName: string;
   serverFolder: string;
   configFile: string;
-  steamcmdPath: string;
-  armaServerFile: string;
   setupComplete: boolean;
 }
 
 /** Public setup endpoints (no auth required). Used for first-time installer. */
 export const setupApi = {
   getStatus: () => api.get<{ setupComplete: boolean }>("/api/setup/status"),
+  detect: () => api.get<DetectServerResponse>("/api/setup/detect"),
   complete: (data: {
     panelName: string;
     serverFolder: string;
     configFile: string;
-    steamcmdPath: string;
-    armaServerFile?: string;
     adminUsername: string;
     adminPassword: string;
   }) => api.post<{ success: boolean }>("/api/setup/complete", data),
@@ -53,8 +50,6 @@ export const settingsApi = {
     panelName: string;
     serverFolder: string;
     configFile: string;
-    steamcmdPath: string;
-    armaServerFile?: string;
   }) => api.post<SettingsResponse>("/api/settings", data),
   update: (data: Partial<SettingsResponse>) => api.put<SettingsResponse>("/api/settings", data),
 };

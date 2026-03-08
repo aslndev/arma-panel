@@ -4,12 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
-import { FolderOpen, FileText, Terminal, LayoutDashboard, Server, Search, AlertTriangle } from "lucide-react";
+import { FolderOpen, FileText, LayoutDashboard, Search, AlertTriangle } from "lucide-react";
 import { useServerSettings } from "@/contexts/ServerSettingsContext";
 import { settingsApi } from "@/api/endpoints";
 
 const SettingsPanel = () => {
-  const { panelName, setPanelName, serverFolder, setServerFolder, configFile, setConfigFile, steamcmdPath, setSteamcmdPath, armaServerFile, setArmaServerFile, detectInstallMessage, refreshSettings } = useServerSettings();
+  const { panelName, setPanelName, serverFolder, setServerFolder, configFile, setConfigFile, detectInstallMessage, refreshSettings } = useServerSettings();
   const [detecting, setDetecting] = useState(false);
 
   const handleSave = async () => {
@@ -18,8 +18,6 @@ const SettingsPanel = () => {
         panelName,
         serverFolder,
         configFile,
-        steamcmdPath,
-        armaServerFile,
       });
       await refreshSettings();
       toast.success("Settings saved successfully!");
@@ -108,30 +106,6 @@ const SettingsPanel = () => {
             placeholder="armarserver_config.json or /path/to/config.json"
           />
           <p className="text-xs text-muted-foreground">Path to server config file — used by Config Editor</p>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2 text-foreground">
-            <Terminal className="h-4 w-4 text-primary" /> SteamCMD Path
-          </Label>
-          <Input
-            value={steamcmdPath}
-            onChange={(e) => setSteamcmdPath(e.target.value)}
-            placeholder="/path/to/steamcmd"
-          />
-          <p className="text-xs text-muted-foreground">Path to SteamCMD binary for server updates</p>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2 text-foreground">
-            <Server className="h-4 w-4 text-primary" /> ArmaServer File
-          </Label>
-          <Input
-            value={armaServerFile}
-            onChange={(e) => setArmaServerFile(e.target.value)}
-            placeholder="/path/to/armaserver or armaserver"
-          />
-          <p className="text-xs text-muted-foreground">Executable or script used for Start / Stop / Restart (e.g. armaserver start, armaserver stop, armaserver restart)</p>
         </div>
 
         <Button onClick={handleSave} className="bg-primary text-primary-foreground hover:bg-primary/80">
