@@ -1,4 +1,5 @@
 import * as ServerControlUseCase from "../useCases/ServerControlUseCase.js";
+import * as ServerSummaryUseCase from "../useCases/ServerSummaryUseCase.js";
 
 export function start(req, res) {
   run("start", req, res);
@@ -19,5 +20,38 @@ async function run(action, req, res) {
   } catch (err) {
     const status = err.message?.includes("not configured") ? 400 : 500;
     res.status(status).json({ error: err.message || "Command failed" });
+  }
+}
+
+export async function summary(req, res) {
+  try {
+    const reqHost = req.headers.host?.replace(/:.*/, "") || req.socket?.remoteAddress || "";
+    const data = await ServerSummaryUseCase.getSummary(reqHost);
+    res.json(data);
+  } catch (err) {
+    const status = err.message?.includes("not configured") ? 400 : 500;
+    res.status(status).json({ error: err.message || "Failed to get summary" });
+  }
+}
+
+export async function listLogSessions(req, res) {
+  try {
+    const dirs = await ServerSummaryUseCase.listSessions();
+    res.json({ sessions: dirs });
+  } catch (err) {
+    const status = err.message?.includes("not configured") ? 400 : 500;
+    res.status(status).json({ error: err.message || "Failed to list log sessions" });
+  }
+}
+
+export async function getLogFile(req, res) {
+  try {
+    const { session, file } = req.params;
+    const tail = req.query.tail ? parseInt(req.query.tail, 10) : undefined;
+    const content = await ServerSummaryUseCase.readLogFile(session, file, tail);
+    res.type("text/plain").send(content);
+  } catch (err) {
+    const status = err.message === "Invalid file name" || err.message === "Invalid session name" ? 400 : 500;
+    res.status(status).json({ error: err.message || "Failed to read log file" });
   }
 }

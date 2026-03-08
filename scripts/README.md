@@ -14,13 +14,14 @@ Then open **http://localhost:3001** (or your server IP).
 
 **Re-run install:** If the install directory already exists, the script overwrites app files and asks: *"Also overwrite database (backend/data)? Settings and users will be reset. [y/N]"* — answer **N** to keep existing panel settings and users; **y** to reset the database.
 
-**"Readonly database" error:** The service must run as the same user that owns the install directory. The script sets ownership to `ARMA_PANEL_USER` (default `root`) after install. If you run the service as another user (e.g. `User=arma` in systemd), run: `sudo chown -R arma:arma /opt/arma-panel` (or your install path) so that user can write to the database.
+**"Readonly database" error:** The service runs as `ARMA_PANEL_USER`. The script sets ownership of the install directory to that user. By default it uses the user who ran `sudo` (or `$USER`), so the database is writable without extra steps.
 
 ## Commands
 
 | Command     | Description |
 |------------|-------------|
 | `install`  | Install to `/opt/arma-panel`, build frontend, create and enable systemd service, then start |
+| `update`   | Rebuild and restart: copy latest code, `npm install`, build frontend, restart service (keeps database) |
 | `uninstall`| Stop service, disable and remove systemd unit, optionally remove install directory |
 | `start`    | Start the panel (`systemctl start arma-panel`) |
 | `restart`  | Restart the panel |
@@ -31,7 +32,7 @@ Then open **http://localhost:3001** (or your server IP).
 ## Options (environment)
 
 - **ARMA_PANEL_INSTALL_DIR** – Install path (default: `/opt/arma-panel`)
-- **ARMA_PANEL_USER** – User to run the service (default: `root`)
+- **ARMA_PANEL_USER** – User to run the service (default: detected — user who ran `sudo`, or current `$USER`)
 - **ARMA_PANEL_AUTO_INSTALL_DEPS** – Set to `1` to auto-install missing dependencies (e.g. Node.js) without prompting
 
 ## Dependency check (install)

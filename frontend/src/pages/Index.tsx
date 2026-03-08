@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Wifi, Clock, Cpu, MemoryStick, HardDrive, Download, Gamepad2, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useServerSettings } from "@/contexts/ServerSettingsContext";
@@ -17,12 +17,44 @@ import BackupsPanel from "@/components/panels/BackupsPanel";
 import NetworkPanel from "@/components/panels/NetworkPanel";
 import ActivityPanel from "@/components/panels/ActivityPanel";
 import ConfigEditorPanel from "@/components/panels/ConfigEditorPanel";
+import LogsPanel from "@/components/panels/LogsPanel";
+import { serverApi, type ServerSummary } from "@/api/endpoints";
+
+function formatUptime(seconds: number): string {
+  if (seconds <= 0) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
 
 const Index = () => {
   const { panelName } = useServerSettings();
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("console");
+  const [summary, setSummary] = useState<ServerSummary | null>(null);
+
+  const loadSummary = useCallback(async () => {
+    try {
+      const data = await serverApi.summary();
+      setSummary(data);
+    } catch {
+      setSummary(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "console") loadSummary();
+  }, [activeTab, loadSummary]);
+
+  useEffect(() => {
+    if (activeTab !== "console") return;
+    const t = setInterval(loadSummary, 10000);
+    return () => clearInterval(t);
+  }, [activeTab, loadSummary]);
 
   const handleLogout = () => {
     logout();
@@ -36,12 +68,26 @@ const Index = () => {
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
             <ServerConsole />
             <div className="space-y-3">
-              <StatusCard icon={Wifi} label="Address" value="104.194.10.9:2486" iconColor="text-primary" />
-              <StatusCard icon={Clock} label="Uptime" value="Offline" iconColor="text-destructive" />
-              <StatusCard icon={Cpu} label="CPU Load" value="Offline" iconColor="text-primary" />
-              <StatusCard icon={MemoryStick} label="Memory" value="Offline" iconColor="text-primary" />
-              <StatusCard icon={HardDrive} label="Disk" value="14.35 GiB" subValue="/ 48.83 GiB" iconColor="text-warning" />
-              <StatusCard icon={Download} label="Network (Inbound)" value="Offline" iconColor="text-primary" />
+              <StatusCard
+                icon={Wifi}
+                label="Address"
+                value={
+                  summary?.address != null && summary?.port != null
+                    ? `${summary.address}:${summary.port}`
+                    : summary?.address ?? "—"
+                }
+                iconColor="text-primary"
+              />
+              <StatusCard
+                icon={Clock}
+                label="Uptime"
+                value={summary?.uptimeSeconds != null ? formatUptime(summary.uptimeSeconds) : "—"}
+                iconColor={summary?.hasSession ? "text-primary" : "text-muted-foreground"}
+              />
+              <StatusCard icon={Cpu} label="CPU Load" value="—" iconColor="text-muted-foreground" />
+              <StatusCard icon={MemoryStick} label="Memory" value="—" iconColor="text-muted-foreground" />
+              <StatusCard icon={HardDrive} label="Disk" value="—" iconColor="text-muted-foreground" />
+              <StatusCard icon={Download} label="Network" value="—" iconColor="text-muted-foreground" />
             </div>
           </div>
         );
@@ -63,6 +109,8 @@ const Index = () => {
         return <SettingsPanel />;
       case "activity":
         return <ActivityPanel />;
+      case "logs":
+        return <LogsPanel />;
       default:
         return null;
     }

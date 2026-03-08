@@ -1,15 +1,19 @@
 import "dotenv/config";
+import http from "http";
 import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import apiRoutes from "./routes/index.js";
+import { attachConsoleWs } from "./websocket/consoleTail.js";
 import "./infrastructure/database.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+const server = http.createServer(app);
+attachConsoleWs(server);
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
   : ["http://localhost:5173", "http://localhost:8080", "http://127.0.0.1:5173", "http://127.0.0.1:8080"];
@@ -33,6 +37,6 @@ if (existsSync(staticDir)) {
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || "0.0.0.0";
-app.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
 });

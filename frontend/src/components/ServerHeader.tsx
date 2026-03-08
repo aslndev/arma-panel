@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { toast } from "sonner";
 import { serverApi } from "@/api/endpoints";
+import { useServerSettings } from "@/contexts/ServerSettingsContext";
 
 const ServerHeader = () => {
+  const { panelName } = useServerSettings();
   const [status, setStatus] = useState<"offline" | "starting" | "online" | "stopping">("offline");
   const [loading, setLoading] = useState<"start" | "stop" | "restart" | null>(null);
 
@@ -64,7 +66,7 @@ const ServerHeader = () => {
       <div className="flex items-center gap-3">
         <div className={`h-3 w-3 rounded-full ${statusColors[status]} animate-pulse`} />
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Arma Reforger Pro</h1>
+          <h1 className="text-2xl font-bold text-foreground">{panelName || "Arma Reforger"}</h1>
           <p className="text-sm text-muted-foreground capitalize">{status}</p>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { api, setToken, clearToken, getToken } from "./client";
+import { api, setToken, clearToken, getToken, getBaseUrl } from "./client";
 
 export interface LoginResponse {
   token: string;
@@ -46,11 +46,38 @@ export const settingsApi = {
   update: (data: Partial<SettingsResponse>) => api.put<SettingsResponse>("/api/settings", data),
 };
 
+export interface ServerSummary {
+  serverFolder: string;
+  sessionStartedAt: string | null;
+  uptimeSeconds: number;
+  address: string | null;
+  port: number | null;
+  hasSession: boolean;
+}
+
 export const serverApi = {
+  summary: () => api.get<ServerSummary>("/api/server/summary"),
   start: () => api.post<{ success: boolean; action: string }>("/api/server/start"),
   stop: () => api.post<{ success: boolean; action: string }>("/api/server/stop"),
   restart: () => api.post<{ success: boolean; action: string }>("/api/server/restart"),
+  logs: {
+    sessions: () => api.get<{ sessions: string[] }>("/api/server/logs/sessions"),
+    getFile: (session: string, file: string, tail?: number) =>
+      fetch(
+        `${getBaseUrl()}/api/server/logs/sessions/${encodeURIComponent(session)}/files/${encodeURIComponent(file)}${tail != null ? `?tail=${tail}` : ""}`,
+        {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        }
+      ).then((r) => (r.ok ? r.text() : r.json().then((d) => Promise.reject(new Error(d.error || "Failed"))))),
+  },
 };
+
+export function getConsoleWebSocketUrl(): string {
+  const base = getBaseUrl() || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3001");
+  const wsBase = base.replace(/^http/, "ws");
+  const token = getToken();
+  return `${wsBase}/ws/console${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+}
 
 /** Config file from Settings (Config File path). Read/save the actual file. */
 export const configApi = {

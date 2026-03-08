@@ -1,4 +1,4 @@
-import { Terminal, FolderOpen, Database, Clock, Users, Archive, Network, Settings, Activity, FileJson } from "lucide-react";
+import { Terminal, FolderOpen, Database, Clock, Users, Archive, Network, Settings, Activity, FileJson, FileText } from "lucide-react";
 
 interface ServerNavProps {
   activeTab: string;
@@ -7,6 +7,7 @@ interface ServerNavProps {
 
 const tabs = [
   { id: "console", label: "Console", icon: Terminal },
+  { id: "logs", label: "Logs", icon: FileText },
   { id: "files", label: "Files", icon: FolderOpen },
   { id: "databases", label: "Databases", icon: Database },
   { id: "schedules", label: "Schedules", icon: Clock },

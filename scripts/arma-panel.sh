@@ -6,7 +6,8 @@ set -e
 
 SERVICE_NAME="arma-panel"
 INSTALL_DIR="${ARMA_PANEL_INSTALL_DIR:-/opt/arma-panel}"
-PANEL_USER="${ARMA_PANEL_USER:-root}"
+# Default: user who ran sudo (SUDO_USER) or current user
+PANEL_USER="${ARMA_PANEL_USER:-${SUDO_USER:-$USER}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NODE_MIN_MAJOR=18
@@ -327,6 +328,15 @@ cmd_install() {
   info "Installing frontend dependencies and building..."
   (cd "$INSTALL_DIR/frontend" && npm install && VITE_API_URL= npm run build)
 
+  if ! id "$PANEL_USER" &>/dev/null; then
+    info "Creating system user ${PANEL_USER}..."
+    useradd --system --no-create-home --shell /usr/sbin/nologin "$PANEL_USER" 2>/dev/null || true
+    if ! id "$PANEL_USER" &>/dev/null; then
+      err "Could not create user ${PANEL_USER}. Create it manually or set ARMA_PANEL_USER=root"
+      exit 1
+    fi
+  fi
+
   info "Creating systemd service..."
   get_systemd_content > "/etc/systemd/system/${SERVICE_NAME}.service"
   systemctl daemon-reload
@@ -389,14 +399,56 @@ cmd_stop() {
   info "Arma Panel stopped."
 }
 
+cmd_update() {
+  if [[ ! -d "$INSTALL_DIR" ]]; then
+    err "Not installed at ${INSTALL_DIR}. Run: $0 install"
+    exit 1
+  fi
+
+  info "Updating Arma Panel at ${INSTALL_DIR} (rebuild + restart)..."
+
+  local data_backup=""
+  if [[ -d "$INSTALL_DIR/backend/data" ]]; then
+    data_backup=$(mktemp -d)
+    cp -a "$INSTALL_DIR/backend/data/"* "$data_backup/" 2>/dev/null || true
+    info "Database preserved."
+  fi
+
+  info "Copying project files..."
+  rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/frontend"
+  cp -r "$PROJECT_ROOT/backend" "$INSTALL_DIR/"
+  cp -r "$PROJECT_ROOT/frontend" "$INSTALL_DIR/"
+  cp -r "$PROJECT_ROOT/scripts" "$INSTALL_DIR/" 2>/dev/null || true
+  mkdir -p "$INSTALL_DIR/backend/data"
+
+  if [[ -n "$data_backup" ]] && [[ -d "$data_backup" ]]; then
+    cp -a "$data_backup/"* "$INSTALL_DIR/backend/data/" 2>/dev/null || true
+    rm -rf "$data_backup"
+  fi
+
+  info "Installing backend dependencies..."
+  (cd "$INSTALL_DIR/backend" && npm install --omit=dev)
+
+  info "Building frontend..."
+  (cd "$INSTALL_DIR/frontend" && npm install && VITE_API_URL= npm run build)
+
+  chown -R "${PANEL_USER}:${PANEL_USER}" "$INSTALL_DIR"
+
+  info "Restarting Arma Panel..."
+  systemctl restart "$SERVICE_NAME"
+
+  info "Update complete."
+}
+
 cmd_status() {
   systemctl status "$SERVICE_NAME" --no-pager
 }
 
 cmd_usage() {
-  echo "Usage: $0 { install | uninstall | start | restart | stop | status }"
+  echo "Usage: $0 { install | update | uninstall | start | restart | stop | status }"
   echo ""
   echo "  install   - Install panel to ${INSTALL_DIR}, build frontend, create and enable systemd service"
+  echo "  update    - Rebuild and restart (copy latest code, npm install, build frontend, restart; keeps DB)"
   echo "  uninstall - Stop service, remove systemd unit, optionally remove install dir"
   echo "  start     - Start the panel (systemctl start ${SERVICE_NAME})"
   echo "  restart   - Restart the panel (systemctl restart ${SERVICE_NAME})"
@@ -406,7 +458,7 @@ cmd_usage() {
   echo ""
   echo "Environment:"
   echo "  ARMA_PANEL_INSTALL_DIR       Install path (default: /opt/arma-panel)"
-  echo "  ARMA_PANEL_USER              User to run service (default: root)"
+  echo "  ARMA_PANEL_USER              User to run service (default: current/sudo user)"
   echo "  ARMA_PANEL_AUTO_INSTALL_DEPS Set to 1 to auto-install missing deps (e.g. Node.js) without prompt"
   echo ""
   echo "Examples:"
@@ -418,6 +470,7 @@ cmd_usage() {
 
 case "${1:-}" in
   install)   cmd_install ;;
+  update)    cmd_update ;;
   uninstall) cmd_uninstall ;;
   start)     cmd_start ;;
   restart)   cmd_restart ;;
