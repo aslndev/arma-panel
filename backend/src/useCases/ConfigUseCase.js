@@ -27,5 +27,9 @@ export async function getContent() {
 export async function saveContent(content, byUser = "admin") {
   const filePath = getConfigFilePath();
   await writeFile(filePath, content ?? "", "utf8");
-  ActivityRepo.log({ type: "config", action: "Config Saved", detail: filePath, user: byUser });
+  try {
+    ActivityRepo.log({ type: "config", action: "Config Saved", detail: filePath, user: byUser });
+  } catch (_) {
+    // Best-effort: do not fail the save if DB is read-only or log fails
+  }
 }

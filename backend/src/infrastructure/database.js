@@ -10,7 +10,7 @@ if (!existsSync(dataDir)) {
   mkdirSync(dataDir, { recursive: true });
 }
 const dbPath = join(dataDir, "panel.db");
-const db = new Database(dbPath);
+const db = new Database(dbPath, { readonly: false });
 
 function initSchema() {
   db.exec(`

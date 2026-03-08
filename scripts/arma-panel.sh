@@ -332,6 +332,9 @@ cmd_install() {
   systemctl daemon-reload
   systemctl enable "$SERVICE_NAME"
 
+  info "Setting ownership to ${PANEL_USER} (service user) so the panel can write to the database..."
+  chown -R "${PANEL_USER}:${PANEL_USER}" "$INSTALL_DIR"
+
   info "Starting Arma Panel..."
   systemctl start "$SERVICE_NAME"
 

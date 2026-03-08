@@ -14,6 +14,8 @@ Then open **http://localhost:3001** (or your server IP).
 
 **Re-run install:** If the install directory already exists, the script overwrites app files and asks: *"Also overwrite database (backend/data)? Settings and users will be reset. [y/N]"* — answer **N** to keep existing panel settings and users; **y** to reset the database.
 
+**"Readonly database" error:** The service must run as the same user that owns the install directory. The script sets ownership to `ARMA_PANEL_USER` (default `root`) after install. If you run the service as another user (e.g. `User=arma` in systemd), run: `sudo chown -R arma:arma /opt/arma-panel` (or your install path) so that user can write to the database.
+
 ## Commands
 
 | Command     | Description |
