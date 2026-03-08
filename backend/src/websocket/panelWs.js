@@ -5,40 +5,71 @@ import * as ServerExecUseCase from "../useCases/ServerExecUseCase.js";
 import * as RconUseCase from "../useCases/RconUseCase.js";
 
 const SUMMARY_INTERVAL_MS = 5000;
-const PLAYERS_INTERVAL_MS = 3000;
+const PLAYERS_INTERVAL_MS = 4000;
 
 const playersSubscribers = new Set();
 let playersIntervalId = null;
+let playersRcon = null;
+let playersRconBusy = false;
+
+function broadcastPlayers(players, error) {
+  const payload = JSON.stringify({ type: "players", data: { players: players ?? [], error: error || null } });
+  for (const ws of playersSubscribers) {
+    try {
+      if (ws.readyState === 1) ws.send(payload);
+      else playersSubscribers.delete(ws);
+    } catch (_) {
+      playersSubscribers.delete(ws);
+    }
+  }
+}
+
+async function ensurePlayersRcon() {
+  if (playersRcon) return playersRcon;
+  try {
+    const config = await RconUseCase.getRconConfig();
+    playersRcon = await RconUseCase.connectPersistent(config.host, config.port, config.password);
+    return playersRcon;
+  } catch (err) {
+    playersRcon = null;
+    throw err;
+  }
+}
+
+async function tickPlayersBroadcast() {
+  if (playersSubscribers.size === 0) return;
+  if (playersRconBusy) return;
+  playersRconBusy = true;
+  try {
+    const rcon = await ensurePlayersRcon();
+    const raw = await RconUseCase.sendCommandOnConnection(rcon, "players");
+    const { players } = RconUseCase.parsePlayersResponse(raw);
+    broadcastPlayers(players, null);
+  } catch (err) {
+    playersRcon = null;
+    broadcastPlayers([], err?.message || "RCON error");
+  } finally {
+    playersRconBusy = false;
+  }
+}
 
 function startPlayersBroadcast() {
   if (playersIntervalId != null) return;
-  playersIntervalId = setInterval(async () => {
-    if (playersSubscribers.size === 0) return;
-    let players = [];
-    let error = null;
-    try {
-      const result = await RconUseCase.listPlayers("panel");
-      players = result.players ?? [];
-      error = result.error || null;
-    } catch (_) {
-      error = "Failed to fetch players";
-    }
-    const payload = JSON.stringify({ type: "players", data: { players, error } });
-    for (const ws of playersSubscribers) {
-      try {
-        if (ws.readyState === 1) ws.send(payload);
-        else playersSubscribers.delete(ws);
-      } catch (_) {
-        playersSubscribers.delete(ws);
-      }
-    }
-  }, PLAYERS_INTERVAL_MS);
+  playersIntervalId = setInterval(tickPlayersBroadcast, PLAYERS_INTERVAL_MS);
+  tickPlayersBroadcast();
 }
 
 function stopPlayersBroadcast() {
   if (playersIntervalId != null) {
     clearInterval(playersIntervalId);
     playersIntervalId = null;
+  }
+  if (playersRcon) {
+    try {
+      playersRcon.removeAllListeners?.();
+      playersRcon.logout?.();
+    } catch (_) {}
+    playersRcon = null;
   }
 }
 
@@ -106,22 +137,6 @@ function attachPanelWs(server) {
         if (msg.type === "subscribe" && msg.channel === "players") {
           playersSubscribers.add(ws);
           if (playersSubscribers.size === 1) startPlayersBroadcast();
-          (async () => {
-            let list = [];
-            let err = null;
-            try {
-              const result = await RconUseCase.listPlayers("panel");
-              list = result.players ?? [];
-              err = result.error || null;
-            } catch (_) {
-              err = "Failed to fetch players";
-            }
-            if (ws.readyState === 1) {
-              try {
-                ws.send(JSON.stringify({ type: "players", data: { players: list, error: err } }));
-              } catch (_) {}
-            }
-          })();
         }
         if (msg.type === "unsubscribe" && msg.channel === "players") {
           playersSubscribers.delete(ws);

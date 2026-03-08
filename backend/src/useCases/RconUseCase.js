@@ -102,6 +102,96 @@ export async function runCommand(command, byUser = "admin") {
 }
 
 /**
+ * Create a persistent RCON connection and wait until connected. Returns the rcon instance.
+ * Call rcon.logout() when done. Rejects on auth failure or timeout.
+ */
+export function connectPersistent(host, port, password) {
+  return new Promise((resolve, reject) => {
+    const rcon = new RCON({
+      address: host,
+      port,
+      password,
+      connectionType: "udp4",
+      connectionTimeout: Math.max(RCON_TIMEOUT_MS, 50000),
+      connectionInterval: 5000,
+      keepAliveInterval: 10000,
+    });
+    const t = setTimeout(() => {
+      rcon.removeAllListeners();
+      try { rcon.logout(); } catch (_) {}
+      reject(new Error("RCON connection timeout"));
+    }, RCON_TIMEOUT_MS);
+    rcon.on("onConnect", (connected) => {
+      clearTimeout(t);
+      if (connected) resolve(rcon);
+      else {
+        try { rcon.logout(); } catch (_) {}
+        reject(new Error("RCON authentication failed"));
+      }
+    });
+    rcon.on("error", (msg) => {
+      clearTimeout(t);
+      reject(new Error(typeof msg === "string" ? msg : "RCON error"));
+    });
+    rcon.login();
+  });
+}
+
+/**
+ * Send one command on an already-connected RCON. Resolves with response text.
+ * The rcon must already have fired onConnect(true); call after createPersistentRcon + login + onConnect.
+ */
+export function sendCommandOnConnection(rcon, command) {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      rcon.removeListener("message", onMessage);
+      rcon.removeListener("error", onError);
+      resolve("");
+    }, 8000);
+    const responseChunks = [];
+    let idleId = null;
+    const finish = (err, result) => {
+      clearTimeout(timeoutId);
+      if (idleId) clearTimeout(idleId);
+      rcon.removeListener("message", onMessage);
+      rcon.removeListener("error", onError);
+      if (err) reject(err);
+      else resolve(result ?? "");
+    };
+    const onMessage = (msg) => {
+      if (typeof msg === "string") responseChunks.push(msg);
+      if (idleId) clearTimeout(idleId);
+      idleId = setTimeout(() => finish(null, responseChunks.join("")), RCON_RESPONSE_IDLE_MS);
+    };
+    const onError = (msg) => finish(new Error(typeof msg === "string" ? msg : "RCON error"));
+    rcon.on("message", onMessage);
+    rcon.on("error", onError);
+    rcon.commandSend(command);
+  });
+}
+
+/**
+ * Parse raw "players" response into { players } array. Handles common formats.
+ */
+export function parsePlayersResponse(raw) {
+  const lines = String(raw || "")
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const players = [];
+  for (const line of lines) {
+    const parts = line.split(/\s+/);
+    if (parts.length >= 1) {
+      const id = parts[0];
+      const name = parts.slice(1).join(" ").trim() || id;
+      if (id && /^[\d]+$/.test(id)) players.push({ identityId: id, name });
+      else if (line) players.push({ identityId: line, name: line });
+    }
+  }
+  return { players, raw };
+}
+
+/**
  * List connected players. Sends "players". On RCON/config error returns { players: [], error }.
  * Expected format is often: "ID Name" per line or similar; we try to parse and fallback to raw lines.
  */
