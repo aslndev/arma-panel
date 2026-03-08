@@ -10,7 +10,12 @@ INSTALL_DIR="${ARMA_PANEL_INSTALL_DIR:-/opt/arma-panel}"
 # Default: user who ran sudo (SUDO_USER) or current user
 PANEL_USER="${ARMA_PANEL_USER:-${SUDO_USER:-$USER}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# When script is at project root (has backend/ and frontend/), PROJECT_ROOT = SCRIPT_DIR; else script is in scripts/ subdir
+if [[ -d "$SCRIPT_DIR/backend" ]] && [[ -d "$SCRIPT_DIR/frontend" ]]; then
+  PROJECT_ROOT="$SCRIPT_DIR"
+else
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
 NODE_MIN_MAJOR=18
 NODE_RECOMMENDED_MAJOR=20
 # Set to 1 to auto-install missing deps without prompting
@@ -458,8 +463,11 @@ cmd_install() {
   rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/frontend"
   cp -r "$PROJECT_ROOT/backend" "$INSTALL_DIR/"
   cp -r "$PROJECT_ROOT/frontend" "$INSTALL_DIR/"
-  cp -r "$PROJECT_ROOT/scripts" "$INSTALL_DIR/" 2>/dev/null || true
-  mkdir -p "$INSTALL_DIR/backend/data"
+  mkdir -p "$INSTALL_DIR/scripts" "$INSTALL_DIR/backend/data"
+  if [[ -f "$PROJECT_ROOT/arma-panel.sh" ]]; then
+    cp "$PROJECT_ROOT/arma-panel.sh" "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/arma-panel.sh"
+  fi
 
   if [[ -n "$data_backup" ]] && [[ -d "$data_backup" ]]; then
     cp -a "$data_backup/"* "$INSTALL_DIR/backend/data/" 2>/dev/null || true
@@ -606,7 +614,7 @@ cmd_update() {
   real_source=$(realpath "$update_source" 2>/dev/null || echo "$update_source")
   if [[ "$real_source" == "$real_install" ]] || [[ "$real_source" == "$real_install"/* ]]; then
     err "Update source is the same as install directory. Run update from your source repo (where you have new code), e.g.:"
-    echo "  cd /path/to/arma-panel && sudo ./scripts/arma-panel.sh update"
+    echo "  cd /path/to/arma-panel && sudo ./arma-panel.sh update"
     echo "Or pass the source path: sudo $0 update /path/to/arma-panel"
     echo "Or set: ARMA_PANEL_UPDATE_SOURCE=/path/to/arma-panel sudo $0 update"
     exit 1
@@ -629,8 +637,11 @@ cmd_update() {
   rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/frontend"
   cp -r "$update_source/backend" "$INSTALL_DIR/"
   cp -r "$update_source/frontend" "$INSTALL_DIR/"
-  cp -r "$update_source/scripts" "$INSTALL_DIR/" 2>/dev/null || true
-  mkdir -p "$INSTALL_DIR/backend/data"
+  mkdir -p "$INSTALL_DIR/scripts" "$INSTALL_DIR/backend/data"
+  if [[ -f "$update_source/arma-panel.sh" ]]; then
+    cp "$update_source/arma-panel.sh" "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/arma-panel.sh"
+  fi
 
   if [[ -n "$data_backup" ]] && [[ -d "$data_backup" ]]; then
     cp -a "$data_backup/"* "$INSTALL_DIR/backend/data/" 2>/dev/null || true
@@ -680,7 +691,7 @@ cmd_usage() {
   echo ""
   echo "Examples:"
   echo "  sudo $0 install"
-  echo "  cd /path/to/arma-panel && sudo ./scripts/arma-panel.sh update   # update from repo"
+  echo "  cd /path/to/arma-panel && sudo ./arma-panel.sh update   # update from repo"
   echo "  sudo $0 update /path/to/arma-panel   # update from given source"
   echo "  sudo $0 stop"
   echo "  ARMA_PANEL_INSTALL_DIR=/home/arma/panel sudo $0 install"

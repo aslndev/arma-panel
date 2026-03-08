@@ -6,8 +6,8 @@ Single script for install, uninstall, and systemd control.
 
 ```bash
 # From project root (after cloning / extracting the project)
-chmod +x scripts/arma-panel.sh
-sudo ./scripts/arma-panel.sh install
+chmod +x arma-panel.sh
+sudo ./arma-panel.sh install
 ```
 
 Then open **http://localhost:3001** (or your server IP).
@@ -22,7 +22,7 @@ Then open **http://localhost:3001** (or your server IP).
 |------------|-------------|
 | `install`  | Install to `/opt/arma-panel`, build frontend, create and enable systemd service, then start |
 | `update`   | Rebuild and restart: copy latest code, `npm install`, build frontend, restart service (keeps database) |
-| `uninstall`| Stop service, disable and remove systemd unit, optionally remove install directory |
+| `uninstall`| Stop service, remove systemd unit, optionally remove install directory |
 | `start`    | Start the panel (`systemctl start arma-panel`) |
 | `restart`  | Restart the panel |
 | `stop`     | Stop the panel |
@@ -45,12 +45,12 @@ When you run `install`, the script checks (in order) and offers to install if mi
   If missing or too old, it will ask: *"Install Node.js 20 LTS now? [Y/n]"*.  
   Supported install methods: **apt** (Debian/Ubuntu via NodeSource), **dnf/yum** (RHEL/Fedora/CentOS via NodeSource), **pacman** (Arch), **zypper** (openSUSE).
 
-For non-interactive installs use: `ARMA_PANEL_AUTO_INSTALL_DEPS=1 sudo ./scripts/arma-panel.sh install`
+For non-interactive installs use: `ARMA_PANEL_AUTO_INSTALL_DEPS=1 sudo ./arma-panel.sh install`
 
 Example:
 
 ```bash
-ARMA_PANEL_INSTALL_DIR=/home/arma/panel sudo ./scripts/arma-panel.sh install
+ARMA_PANEL_INSTALL_DIR=/home/arma/panel sudo ./arma-panel.sh install
 ```
 
 ## Requirements
