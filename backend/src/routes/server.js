@@ -1,9 +1,10 @@
 import { Router } from "express";
 import * as serverController from "../controllers/serverController.js";
-import { authMiddleware } from "../middleware/auth.js";
+import { authMiddleware, requirePermission } from "../middleware/auth.js";
 
 const router = Router();
 router.use(authMiddleware);
+router.use(requirePermission("console"));
 router.get("/summary", serverController.summary);
 router.get("/logs/sessions", serverController.listLogSessions);
 router.get("/logs/sessions/:session/files/:file", serverController.getLogFile);

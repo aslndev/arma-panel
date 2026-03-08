@@ -1,12 +1,13 @@
 import { Router } from "express";
 import multer from "multer";
 import * as filesController from "../controllers/filesController.js";
-import { authMiddleware } from "../middleware/auth.js";
+import { authMiddleware, requirePermission } from "../middleware/auth.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(authMiddleware);
+router.use(requirePermission("files"));
 router.get("/", filesController.list);
 router.post("/folder", filesController.createFolder);
 router.post("/upload", upload.single("file"), filesController.uploadFile);

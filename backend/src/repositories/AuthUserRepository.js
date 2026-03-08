@@ -28,8 +28,8 @@ export function findByUsername(username) {
   if (row.permissionsJson != null) {
     row.permissions = JSON.parse(row.permissionsJson || "[]");
   } else {
-    row.role = row.role || "admin";
-    row.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"];
+    row.role = row.role || "owner";
+    row.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players", "config", "settings", "activity"];
   }
   return row;
 }
@@ -42,8 +42,8 @@ export function getById(id) {
     out.role = row.role || "subuser";
     out.permissions = JSON.parse(row.permissionsJson || "[]");
   } else {
-    out.role = "admin";
-    out.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"];
+    out.role = "owner";
+    out.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players", "config", "settings", "activity"];
   }
   if (row.createdAt) out.createdAt = row.createdAt;
   return out;
@@ -104,13 +104,16 @@ export function deleteById(id) {
   db.prepare("DELETE FROM auth_users WHERE id = ?").run(id);
 }
 
-/** Set or update the first admin user (id 1). Used during installer. */
+/** Set or update the first admin user (id 1). Used during installer. Role = owner with full permissions. */
 export function setFirstAdmin(username, passwordHash) {
-  const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"]);
+  const fullPerms = JSON.stringify([
+    "console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players",
+    "config", "settings", "activity",
+  ]);
   const existing = db.prepare("SELECT id FROM auth_users WHERE id = 1").get();
   if (existing) {
-    db.prepare("UPDATE auth_users SET username = ?, password_hash = ?, role = 'admin', permissions_json = ? WHERE id = 1").run(username, passwordHash, fullPerms);
+    db.prepare("UPDATE auth_users SET username = ?, password_hash = ?, role = 'owner', permissions_json = ? WHERE id = 1").run(username, passwordHash, fullPerms);
   } else {
-    db.prepare("INSERT INTO auth_users (id, username, password_hash, role, permissions_json, created_at) VALUES (1, ?, ?, 'admin', ?, datetime('now'))").run(username, passwordHash, fullPerms);
+    db.prepare("INSERT INTO auth_users (id, username, password_hash, role, permissions_json, created_at) VALUES (1, ?, ?, 'owner', ?, datetime('now'))").run(username, passwordHash, fullPerms);
   }
 }

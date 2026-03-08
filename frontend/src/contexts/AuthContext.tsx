@@ -5,6 +5,8 @@ import { setToken, clearToken, hasToken } from "@/api/client";
 export interface AuthUser {
   id: number | string;
   username: string;
+  role?: string;
+  permissions?: string[];
 }
 
 interface AuthContextValue {
@@ -36,7 +38,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       .me()
       .then((res) => {
         setIsAuthenticated(true);
-        setUser(res.user ? { id: res.user.id, username: res.user.username } : null);
+        const u = res.user;
+        setUser(u ? { id: u.id, username: u.username, role: u.role, permissions: u.permissions } : null);
       })
       .catch(() => {
         clearToken();
@@ -51,7 +54,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const res = await authApi.login(username.trim(), password);
       setToken(res.token);
       setIsAuthenticated(true);
-      setUser(res.user ? { id: res.user.id, username: res.user.username } : null);
+      const meRes = await authApi.me();
+      const u = meRes?.user;
+      setUser(u ? { id: u.id, username: u.username, role: u.role, permissions: u.permissions } : res.user ? { id: res.user.id, username: res.user.username } : null);
       return true;
     } catch {
       return false;

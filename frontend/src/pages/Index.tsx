@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Wifi, Clock, Cpu, MemoryStick, HardDrive, Download, Gamepad2, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useServerSettings } from "@/contexts/ServerSettingsContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import ServerHeader from "@/components/ServerHeader";
-import ServerNav from "@/components/ServerNav";
+import ServerNav, { getVisibleTabIds } from "@/components/ServerNav";
 import ServerConsole from "@/components/ServerConsole";
 import StatusCard from "@/components/StatusCard";
 import SettingsPanel from "@/components/SettingsPanel";
@@ -105,9 +105,16 @@ function ConsoleTabContent() {
 
 const Index = () => {
   const { panelName } = useServerSettings();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("console");
+
+  const visibleIds = getVisibleTabIds(user?.role, user?.permissions);
+  useEffect(() => {
+    if (visibleIds.length > 0 && !visibleIds.includes(activeTab)) {
+      setActiveTab(visibleIds[0]);
+    }
+  }, [visibleIds.join(","), activeTab]);
 
   const handleLogout = () => {
     logout();

@@ -28,7 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usersApi, type PanelUser } from "@/api/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 
-const PERM_OPTIONS = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"];
+const PERM_OPTIONS = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players", "config", "settings", "activity"];
 
 const roleConfig: Record<string, { icon: typeof Shield; color: string; label: string }> = {
   owner: { icon: ShieldAlert, color: "text-amber-500", label: "Owner" },

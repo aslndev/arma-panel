@@ -28,7 +28,8 @@ export const setupApi = {
 export const authApi = {
   login: (username: string, password: string) =>
     api.post<LoginResponse>("/api/auth/login", { username, password }),
-  me: () => api.get<{ user: { id: number; username: string } }>("/api/auth/me"),
+  me: () =>
+    api.get<{ user: { id: number; username: string; role?: string; permissions?: string[] } }>("/api/auth/me"),
 };
 
 export interface DetectServerResponse {
