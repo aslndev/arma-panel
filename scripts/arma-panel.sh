@@ -588,12 +588,35 @@ cmd_stop() {
 }
 
 cmd_update() {
+  local source_arg="$1"
   if [[ ! -d "$INSTALL_DIR" ]]; then
     err "Not installed at ${INSTALL_DIR}. Run: $0 install"
     exit 1
   fi
 
-  info "Updating Arma Panel at ${INSTALL_DIR} (rebuild + restart)..."
+  local update_source="${ARMA_PANEL_UPDATE_SOURCE:-}"
+  if [[ -n "$source_arg" ]]; then
+    update_source="$source_arg"
+  fi
+  if [[ -z "$update_source" ]]; then
+    update_source="$PROJECT_ROOT"
+  fi
+  local real_install real_source
+  real_install=$(realpath "$INSTALL_DIR" 2>/dev/null || echo "$INSTALL_DIR")
+  real_source=$(realpath "$update_source" 2>/dev/null || echo "$update_source")
+  if [[ "$real_source" == "$real_install" ]] || [[ "$real_source" == "$real_install"/* ]]; then
+    err "Update source is the same as install directory. Run update from your source repo (where you have new code), e.g.:"
+    echo "  cd /path/to/arma-panel && sudo ./scripts/arma-panel.sh update"
+    echo "Or pass the source path: sudo $0 update /path/to/arma-panel"
+    echo "Or set: ARMA_PANEL_UPDATE_SOURCE=/path/to/arma-panel sudo $0 update"
+    exit 1
+  fi
+  if [[ ! -d "$update_source/backend" ]] || [[ ! -d "$update_source/frontend" ]]; then
+    err "Source directory missing backend or frontend: $update_source"
+    exit 1
+  fi
+
+  info "Updating Arma Panel at ${INSTALL_DIR} from ${update_source} (rebuild + restart)..."
 
   local data_backup=""
   if [[ -d "$INSTALL_DIR/backend/data" ]]; then
@@ -604,9 +627,9 @@ cmd_update() {
 
   info "Copying project files..."
   rm -rf "$INSTALL_DIR/backend" "$INSTALL_DIR/frontend"
-  cp -r "$PROJECT_ROOT/backend" "$INSTALL_DIR/"
-  cp -r "$PROJECT_ROOT/frontend" "$INSTALL_DIR/"
-  cp -r "$PROJECT_ROOT/scripts" "$INSTALL_DIR/" 2>/dev/null || true
+  cp -r "$update_source/backend" "$INSTALL_DIR/"
+  cp -r "$update_source/frontend" "$INSTALL_DIR/"
+  cp -r "$update_source/scripts" "$INSTALL_DIR/" 2>/dev/null || true
   mkdir -p "$INSTALL_DIR/backend/data"
 
   if [[ -n "$data_backup" ]] && [[ -d "$data_backup" ]]; then
@@ -641,7 +664,7 @@ cmd_usage() {
   echo "Usage: $0 { install | update | uninstall | start | restart | stop | status }"
   echo ""
   echo "  install   - Install panel (+ optional LinuxGSM Arma Reforger server from scratch), create systemd services"
-  echo "  update    - Rebuild and restart (copy latest code, npm install, build frontend, restart; keeps DB)"
+  echo "  update [SOURCE] - Rebuild and restart from SOURCE (copy backend+frontend, npm install, build; keeps DB). Run from source repo or pass path."
   echo "  uninstall - Stop services, remove systemd units, optionally remove install dir"
   echo "  start     - Start the panel (systemctl start ${SERVICE_NAME})"
   echo "  restart   - Restart the panel (systemctl restart ${SERVICE_NAME})"
@@ -653,9 +676,12 @@ cmd_usage() {
   echo "  ARMA_PANEL_INSTALL_DIR       Install path (default: /opt/arma-panel)"
   echo "  ARMA_PANEL_USER              User to run service (default: current/sudo user)"
   echo "  ARMA_PANEL_AUTO_INSTALL_DEPS Set to 1 to auto-install missing deps (e.g. Node.js) without prompt"
+  echo "  ARMA_PANEL_UPDATE_SOURCE    Source path for 'update' when not running from source repo"
   echo ""
   echo "Examples:"
   echo "  sudo $0 install"
+  echo "  cd /path/to/arma-panel && sudo ./scripts/arma-panel.sh update   # update from repo"
+  echo "  sudo $0 update /path/to/arma-panel   # update from given source"
   echo "  sudo $0 stop"
   echo "  ARMA_PANEL_INSTALL_DIR=/home/arma/panel sudo $0 install"
   exit 1
@@ -663,7 +689,7 @@ cmd_usage() {
 
 case "${1:-}" in
   install)   cmd_install ;;
-  update)    cmd_update ;;
+  update)    cmd_update "$2" ;;
   uninstall) cmd_uninstall ;;
   start)     cmd_start ;;
   restart)   cmd_restart ;;
