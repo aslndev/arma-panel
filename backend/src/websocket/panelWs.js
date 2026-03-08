@@ -10,10 +10,7 @@ function attachPanelWs(server) {
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url || "", `http://${request.headers.host}`);
-    if (url.pathname !== "/ws/panel") {
-      socket.destroy();
-      return;
-    }
+    if (url.pathname !== "/ws/panel") return;
     const token = url.searchParams.get("token");
     if (!token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
