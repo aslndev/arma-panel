@@ -8,6 +8,7 @@ import * as ActivityRepo from "../repositories/ActivityRepository.js";
 const ACTIONS = ["start", "stop", "restart"];
 const PID_FILE = ".arma-server.pid";
 const MAXFPS = "60";
+const EXECUTABLE_NAME = "ArmaReforgerServer";
 
 function getPidPath(serverFolder) {
   return join(serverFolder, PID_FILE);
@@ -17,11 +18,9 @@ function getSettings() {
   const s = SettingsRepo.getSettings();
   const serverFolder = (s?.serverFolder ?? "").trim();
   const configFile = (s?.configFile ?? "").trim();
-  const armaServerFile = (s?.armaServerFile ?? "").trim();
   if (!serverFolder) throw new Error("Server folder is not configured. Set it in Settings.");
   if (!configFile) throw new Error("Config file is not configured. Set it in Settings.");
-  if (!armaServerFile) throw new Error("ArmaServer File is not configured. Set it in Settings.");
-  return { serverFolder, configFile, armaServerFile };
+  return { serverFolder, configFile };
 }
 
 function isAbsolutePath(p) {
@@ -36,25 +35,18 @@ function resolveProfilePath(serverFolder) {
   return join(serverFolder, "profiles", "server");
 }
 
-/** Resolve executable path (Linux: absolute or relative to server folder). */
-function resolveExecutable(serverFolder, armaServerFile) {
-  return isAbsolutePath(armaServerFile)
-    ? armaServerFile
-    : join(serverFolder, armaServerFile.replace(/^\.\//, ""));
-}
-
-/** Start: run ArmaReforgerServer with -config, -profile, -maxFPS. Save PID to .arma-server.pid in server folder. */
+/** Start: {server folder}/ArmaReforgerServer -config {config file} -profile {server folder}/profiles/server -maxFPS 60 */
 export async function start(byUser = "admin") {
-  const { serverFolder, configFile, armaServerFile } = getSettings();
+  const { serverFolder, configFile } = getSettings();
   const configPath = resolveConfigPath(serverFolder, configFile);
   const profilePath = resolveProfilePath(serverFolder);
-  const executable = resolveExecutable(serverFolder, armaServerFile);
+  const executable = join(serverFolder, EXECUTABLE_NAME);
 
   if (!existsSync(serverFolder)) {
     throw new Error(`Server folder does not exist: ${serverFolder}`);
   }
   if (!existsSync(executable)) {
-    throw new Error(`ArmaServer executable not found: ${executable}. Check Settings > ArmaServer File.`);
+    throw new Error(`${EXECUTABLE_NAME} not found at ${executable}. Ensure the binary is in the server folder.`);
   }
   if (!existsSync(configPath)) {
     throw new Error(`Config file not found: ${configPath}. Check Settings > Config File.`);
@@ -99,7 +91,7 @@ export async function start(byUser = "admin") {
         user: byUser,
       });
       const msg = err.code === "ENOENT"
-        ? `Executable not found: ${executable}. Check Settings > ArmaServer File.`
+        ? `${EXECUTABLE_NAME} not found at ${executable}. Ensure the binary is in the server folder.`
         : err.message;
       settle(() => rejectPromise(new Error(msg)));
     });

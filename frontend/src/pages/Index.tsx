@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Wifi, Clock, Cpu, MemoryStick, HardDrive, Download, Gamepad2, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useServerSettings } from "@/contexts/ServerSettingsContext";
@@ -18,7 +18,7 @@ import NetworkPanel from "@/components/panels/NetworkPanel";
 import ActivityPanel from "@/components/panels/ActivityPanel";
 import ConfigEditorPanel from "@/components/panels/ConfigEditorPanel";
 import LogsPanel from "@/components/panels/LogsPanel";
-import { serverApi, type ServerSummary } from "@/api/endpoints";
+import { ConsoleWsProvider, useConsoleWs } from "@/contexts/ConsoleWsContext";
 
 function formatUptime(seconds: number): string {
   if (seconds <= 0) return "—";
@@ -30,31 +30,85 @@ function formatUptime(seconds: number): string {
   return `${s}s`;
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+function ConsoleTabContent() {
+  const { summary } = useConsoleWs();
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+      <ServerConsole />
+      <div className="space-y-3">
+        <StatusCard
+          icon={Wifi}
+          label="Address"
+          value={
+            summary?.address != null && summary?.port != null
+              ? `${summary.address}:${summary.port}`
+              : summary?.address ?? "—"
+          }
+          iconColor="text-primary"
+        />
+        <StatusCard
+          icon={Clock}
+          label="Uptime"
+          value={summary?.uptimeSeconds != null ? formatUptime(summary.uptimeSeconds) : "—"}
+          iconColor={summary?.hasSession ? "text-primary" : "text-muted-foreground"}
+        />
+        <StatusCard
+          icon={Cpu}
+          label="CPU Load"
+          value={summary?.cpuLoad != null ? summary.cpuLoad.toFixed(2) : "—"}
+          iconColor={summary?.cpuLoad != null ? "text-primary" : "text-muted-foreground"}
+        />
+        <StatusCard
+          icon={MemoryStick}
+          label="Memory"
+          value={
+            summary?.memoryUsed != null && summary?.memoryTotalMb != null
+              ? `${summary.memoryUsed}% (${Math.round((summary.memoryUsed / 100) * summary.memoryTotalMb)} / ${summary.memoryTotalMb} MB)`
+              : summary?.memoryUsed != null
+                ? `${summary.memoryUsed}%`
+                : "—"
+          }
+          iconColor={summary?.memoryUsed != null ? "text-primary" : "text-muted-foreground"}
+        />
+        <StatusCard
+          icon={HardDrive}
+          label="Disk"
+          value={
+            summary?.diskUsedMb != null && summary?.diskTotalMb != null
+              ? `${summary.diskUsedMb} / ${summary.diskTotalMb} MB`
+              : summary?.diskUsedMb != null
+                ? `${summary.diskUsedMb} MB`
+                : "—"
+          }
+          iconColor={summary?.diskUsedMb != null ? "text-primary" : "text-muted-foreground"}
+        />
+        <StatusCard
+          icon={Download}
+          label="Network"
+          value={
+            summary?.networkRx != null && summary?.networkTx != null
+              ? `↓ ${formatBytes(summary.networkRx)} ↑ ${formatBytes(summary.networkTx)}`
+              : "—"
+          }
+          iconColor={summary?.networkRx != null ? "text-primary" : "text-muted-foreground"}
+        />
+      </div>
+    </div>
+  );
+}
+
 const Index = () => {
   const { panelName } = useServerSettings();
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("console");
-  const [summary, setSummary] = useState<ServerSummary | null>(null);
-
-  const loadSummary = useCallback(async () => {
-    try {
-      const data = await serverApi.summary();
-      setSummary(data);
-    } catch {
-      setSummary(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === "console") loadSummary();
-  }, [activeTab, loadSummary]);
-
-  useEffect(() => {
-    if (activeTab !== "console") return;
-    const t = setInterval(loadSummary, 10000);
-    return () => clearInterval(t);
-  }, [activeTab, loadSummary]);
 
   const handleLogout = () => {
     logout();
@@ -65,31 +119,9 @@ const Index = () => {
     switch (activeTab) {
       case "console":
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
-            <ServerConsole />
-            <div className="space-y-3">
-              <StatusCard
-                icon={Wifi}
-                label="Address"
-                value={
-                  summary?.address != null && summary?.port != null
-                    ? `${summary.address}:${summary.port}`
-                    : summary?.address ?? "—"
-                }
-                iconColor="text-primary"
-              />
-              <StatusCard
-                icon={Clock}
-                label="Uptime"
-                value={summary?.uptimeSeconds != null ? formatUptime(summary.uptimeSeconds) : "—"}
-                iconColor={summary?.hasSession ? "text-primary" : "text-muted-foreground"}
-              />
-              <StatusCard icon={Cpu} label="CPU Load" value="—" iconColor="text-muted-foreground" />
-              <StatusCard icon={MemoryStick} label="Memory" value="—" iconColor="text-muted-foreground" />
-              <StatusCard icon={HardDrive} label="Disk" value="—" iconColor="text-muted-foreground" />
-              <StatusCard icon={Download} label="Network" value="—" iconColor="text-muted-foreground" />
-            </div>
-          </div>
+          <ConsoleWsProvider>
+            <ConsoleTabContent />
+          </ConsoleWsProvider>
         );
       case "files":
         return <FilesPanel />;

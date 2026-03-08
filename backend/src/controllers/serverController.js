@@ -1,5 +1,6 @@
 import * as ServerControlUseCase from "../useCases/ServerControlUseCase.js";
 import * as ServerSummaryUseCase from "../useCases/ServerSummaryUseCase.js";
+import * as ServerExecUseCase from "../useCases/ServerExecUseCase.js";
 
 export function start(req, res) {
   run("start", req, res);
@@ -53,5 +54,15 @@ export async function getLogFile(req, res) {
   } catch (err) {
     const status = err.message === "Invalid file name" || err.message === "Invalid session name" ? 400 : 500;
     res.status(status).json({ error: err.message || "Failed to read log file" });
+  }
+}
+
+export async function exec(req, res) {
+  try {
+    const command = req.body?.command;
+    const result = await ServerExecUseCase.runCommand(command, req.user?.username || "admin");
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message || "Command failed" });
   }
 }

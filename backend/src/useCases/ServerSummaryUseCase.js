@@ -1,8 +1,11 @@
 import { readdir, stat, readFile } from "fs/promises";
 import { join, resolve } from "path";
+import { execSync } from "child_process";
+import os from "os";
 import * as SettingsRepo from "../repositories/SettingsRepository.js";
 
 const LOGS_SUBPATH = "profiles/server/logs";
+const PID_FILE = ".arma-server.pid";
 
 function getServerFolder() {
   const s = SettingsRepo.getSettings();
@@ -79,8 +82,24 @@ export function sessionNameFromDir(dirName) {
   return dirName.slice(5);
 }
 
+/** True if .arma-server.pid exists and that process is still running */
+async function isServerProcessRunning() {
+  try {
+    const folder = getServerFolder();
+    const pidPath = join(folder, PID_FILE);
+    const buf = await readFile(pidPath, "utf8");
+    const pid = parseInt(buf.trim(), 10);
+    if (Number.isNaN(pid) || pid <= 0) return false;
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getSummary(reqHost) {
   const serverFolder = getServerFolder();
+  const running = await isServerProcessRunning();
   const sessions = await listSessions();
   let sessionStartedAt = null;
   let uptimeSeconds = 0;
@@ -110,12 +129,58 @@ export async function getSummary(reqHost) {
   } catch (_) {}
   if (!address && reqHost) address = reqHost.replace(/:.*/, "");
 
+  const load = os.loadavg();
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+
+  let diskUsedK = null;
+  let diskTotalK = null;
+  try {
+    const out = execSync(`df -k "${serverFolder}"`, { encoding: "utf8", maxBuffer: 4096 });
+    const lines = out.trim().split("\n");
+    if (lines.length >= 2) {
+      const m = lines[1].trim().split(/\s+/);
+      if (m.length >= 3) {
+        diskTotalK = parseInt(m[1], 10);
+        diskUsedK = parseInt(m[2], 10);
+        if (Number.isNaN(diskTotalK)) diskTotalK = null;
+        if (Number.isNaN(diskUsedK)) diskUsedK = null;
+      }
+    }
+  } catch (_) {}
+
+  let networkRx = null;
+  let networkTx = null;
+  try {
+    const net = await readFile("/proc/net/dev", "utf8");
+    let rx = 0;
+    let tx = 0;
+    for (const line of net.split("\n").slice(2)) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length >= 10) {
+        rx += parseInt(parts[1], 10) || 0;
+        tx += parseInt(parts[9], 10) || 0;
+      }
+    }
+    networkRx = rx;
+    networkTx = tx;
+  } catch (_) {}
+
   return {
     serverFolder,
+    running,
     sessionStartedAt,
     uptimeSeconds,
     address: address || null,
     port: port != null ? Number(port) : null,
     hasSession: sessions.length > 0,
+    cpuLoad: load[0] ?? null,
+    memoryUsed: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : null,
+    memoryTotalMb: Math.round(totalMem / 1024 / 1024),
+    diskUsedMb: diskUsedK != null ? Math.round(diskUsedK / 1024) : null,
+    diskTotalMb: diskTotalK != null ? Math.round(diskTotalK / 1024) : null,
+    networkRx,
+    networkTx,
   };
 }

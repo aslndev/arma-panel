@@ -48,11 +48,19 @@ export const settingsApi = {
 
 export interface ServerSummary {
   serverFolder: string;
+  running: boolean;
   sessionStartedAt: string | null;
   uptimeSeconds: number;
   address: string | null;
   port: number | null;
   hasSession: boolean;
+  cpuLoad: number | null;
+  memoryUsed: number | null;
+  memoryTotalMb: number | null;
+  diskUsedMb: number | null;
+  diskTotalMb: number | null;
+  networkRx: number | null;
+  networkTx: number | null;
 }
 
 export const serverApi = {
@@ -60,6 +68,8 @@ export const serverApi = {
   start: () => api.post<{ success: boolean; action: string }>("/api/server/start"),
   stop: () => api.post<{ success: boolean; action: string }>("/api/server/stop"),
   restart: () => api.post<{ success: boolean; action: string }>("/api/server/restart"),
+  exec: (command: string) =>
+    api.post<{ stdout: string; stderr: string; code: number }>("/api/server/exec", { command }),
   logs: {
     sessions: () => api.get<{ sessions: string[] }>("/api/server/logs/sessions"),
     getFile: (session: string, file: string, tail?: number) =>
@@ -77,6 +87,13 @@ export function getConsoleWebSocketUrl(): string {
   const wsBase = base.replace(/^http/, "ws");
   const token = getToken();
   return `${wsBase}/ws/console${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+}
+
+export function getPanelWebSocketUrl(): string {
+  const base = getBaseUrl() || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3001");
+  const wsBase = base.replace(/^http/, "ws");
+  const token = getToken();
+  return `${wsBase}/ws/panel${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 }
 
 /** Config file from Settings (Config File path). Read/save the actual file. */

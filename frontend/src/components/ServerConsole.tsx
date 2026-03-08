@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { serverApi, type ServerSummary } from "@/api/endpoints";
+import { useState, useRef, useEffect } from "react";
+import { useConsoleWs } from "@/contexts/ConsoleWsContext";
+import { toast } from "sonner";
 
 function formatUptime(seconds: number): string {
   if (seconds <= 0) return "—";
@@ -17,50 +18,44 @@ interface TerminalLine {
 }
 
 const ServerConsole = () => {
-  const [summary, setSummary] = useState<ServerSummary | null>(null);
+  const { summary, sendExec, connected } = useConsoleWs();
   const [lines, setLines] = useState<TerminalLine[]>([]);
   const [command, setCommand] = useState("");
+  const [running, setRunning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const loadSummary = useCallback(async () => {
-    try {
-      const data = await serverApi.summary();
-      setSummary(data);
-    } catch {
-      setSummary(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSummary();
-    const t = setInterval(loadSummary, 10000);
-    return () => clearInterval(t);
-  }, [loadSummary]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
   }, [lines]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cmd = command.trim();
-    if (!cmd) return;
+    if (!cmd || running) return;
     setCommand("");
     setLines((prev) => [...prev, { type: "command", text: cmd }]);
-    setLines((prev) => [
-      ...prev,
-      {
-        type: "output",
-        text: "Command sent. For live server log output, use the Logs tab.",
-      },
-    ]);
-    inputRef.current?.focus();
+    setRunning(true);
+    try {
+      const result = await sendExec(cmd);
+      const out = [result.stdout, result.stderr].filter(Boolean).join(result.stdout && result.stderr ? "\n" : "") || "(no output)";
+      setLines((prev) => [...prev, { type: "output", text: out }]);
+      if (result.code !== 0) {
+        setLines((prev) => [...prev, { type: "output", text: `[exit code ${result.code}]` }]);
+      }
+    } catch (err) {
+      setLines((prev) => [...prev, { type: "output", text: (err as Error).message }]);
+      toast.error("Command failed");
+    } finally {
+      setRunning(false);
+      inputRef.current?.focus();
+    }
   };
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        {!connected && <span className="text-amber-500">Disconnected</span>}
         <span>
           <span className="font-medium text-foreground">Address:</span>{" "}
           {summary?.address != null && summary?.port != null
@@ -75,11 +70,11 @@ const ServerConsole = () => {
       <div className="rounded-lg border border-border bg-terminal overflow-hidden flex flex-col">
         <div
           ref={scrollRef}
-          className="overflow-y-auto p-3 font-mono text-xs text-foreground min-h-[200px] max-h-[320px]"
+          className="overflow-y-auto p-3 font-mono text-xs text-foreground min-h-[200px] max-h-[320px] whitespace-pre-wrap break-words"
         >
           {lines.length === 0 && (
             <div className="text-muted-foreground">
-              Type a command and press Enter. For server log stream, use the Logs tab.
+              Bash terminal — commands run in the server folder. Use the Logs tab to view server log files.
             </div>
           )}
           {lines.map((line, i) => (
@@ -95,8 +90,9 @@ const ServerConsole = () => {
             type="text"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            placeholder="Command..."
-            className="flex-1 bg-transparent text-foreground font-mono text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={running ? "Running..." : "Enter command..."}
+            disabled={running}
+            className="flex-1 bg-transparent text-foreground font-mono text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
             autoFocus
           />
         </form>

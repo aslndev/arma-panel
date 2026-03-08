@@ -10,4 +10,5 @@ router.get("/logs/sessions/:session/files/:file", serverController.getLogFile);
 router.post("/start", serverController.start);
 router.post("/stop", serverController.stop);
 router.post("/restart", serverController.restart);
+router.post("/exec", serverController.exec);
 export default router;
