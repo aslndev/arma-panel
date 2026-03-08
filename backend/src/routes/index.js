@@ -11,6 +11,7 @@ import allocationsRoutes from "./allocations.js";
 import activityRoutes from "./activity.js";
 import serverRoutes from "./server.js";
 import configRoutes from "./config.js";
+import playersRoutes from "./players.js";
 
 const router = Router();
 router.use("/auth", authRoutes);
@@ -18,6 +19,7 @@ router.use("/setup", setupRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/server", serverRoutes);
 router.use("/config", configRoutes);
+router.use("/players", playersRoutes);
 router.use("/users", usersRoutes);
 router.use("/databases", databasesRoutes);
 router.use("/schedules", schedulesRoutes);

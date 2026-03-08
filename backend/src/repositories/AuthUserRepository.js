@@ -29,7 +29,7 @@ export function findByUsername(username) {
     row.permissions = JSON.parse(row.permissionsJson || "[]");
   } else {
     row.role = row.role || "admin";
-    row.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules"];
+    row.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"];
   }
   return row;
 }
@@ -43,7 +43,7 @@ export function getById(id) {
     out.permissions = JSON.parse(row.permissionsJson || "[]");
   } else {
     out.role = "admin";
-    out.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules"];
+    out.permissions = ["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"];
   }
   if (row.createdAt) out.createdAt = row.createdAt;
   return out;
@@ -106,7 +106,7 @@ export function deleteById(id) {
 
 /** Set or update the first admin user (id 1). Used during installer. */
 export function setFirstAdmin(username, passwordHash) {
-  const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules"]);
+  const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"]);
   const existing = db.prepare("SELECT id FROM auth_users WHERE id = 1").get();
   if (existing) {
     db.prepare("UPDATE auth_users SET username = ?, password_hash = ?, role = 'admin', permissions_json = ? WHERE id = 1").run(username, passwordHash, fullPerms);

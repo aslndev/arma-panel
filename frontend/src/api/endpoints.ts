@@ -119,6 +119,30 @@ export const usersApi = {
   remove: (id: string) => api.delete(`/api/users/${id}`),
 };
 
+export interface ServerPlayer {
+  identityId: string;
+  name: string;
+}
+
+export const playersApi = {
+  list: () =>
+    api.get<{ players: ServerPlayer[]; raw?: string }>("/api/players"),
+  kick: (identityId: string, reason?: string) =>
+    api.post<{ success: boolean }>("/api/players/kick", { identityId, reason: reason ?? "" }),
+  ban: (identityId: string, reason?: string, durationSeconds?: number) =>
+    api.post<{ success: boolean }>("/api/players/ban", {
+      identityId,
+      reason: reason ?? "",
+      durationSeconds: durationSeconds ?? 0,
+    }),
+  unban: (identityId: string) =>
+    api.post<{ success: boolean }>("/api/players/unban", { identityId }),
+  banList: (page?: number) =>
+    api.get<{ bans: { identityId: string; detail: string }[]; raw?: string }>(
+      `/api/players/bans${page != null ? `?page=${page}` : ""}`
+    ),
+};
+
 export const databasesApi = {
   list: () =>
     api.get<

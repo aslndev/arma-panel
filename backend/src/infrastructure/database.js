@@ -122,10 +122,10 @@ function initSchema() {
   const adminExists = db.prepare("SELECT 1 FROM auth_users WHERE username = ?").get("admin");
   if (!adminExists) {
     const hash = bcrypt.hashSync("admin", 10);
-    const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules"]);
+    const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"]);
     db.prepare("INSERT INTO auth_users (username, password_hash, role, permissions_json) VALUES (?, ?, 'admin', ?)").run("admin", hash, fullPerms);
   } else {
-    const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules"]);
+    const fullPerms = JSON.stringify(["console", "start", "stop", "restart", "files", "backups", "users", "schedules", "players"]);
     try {
       db.prepare("UPDATE auth_users SET role = 'admin', permissions_json = ? WHERE username = 'admin'").run(fullPerms);
     } catch (_) {

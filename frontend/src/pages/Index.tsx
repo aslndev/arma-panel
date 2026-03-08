@@ -10,14 +10,13 @@ import ServerConsole from "@/components/ServerConsole";
 import StatusCard from "@/components/StatusCard";
 import SettingsPanel from "@/components/SettingsPanel";
 import FilesPanel from "@/components/panels/FilesPanel";
-import DatabasesPanel from "@/components/panels/DatabasesPanel";
 import SchedulesPanel from "@/components/panels/SchedulesPanel";
 import UsersPanel from "@/components/panels/UsersPanel";
 import BackupsPanel from "@/components/panels/BackupsPanel";
-import NetworkPanel from "@/components/panels/NetworkPanel";
 import ActivityPanel from "@/components/panels/ActivityPanel";
 import ConfigEditorPanel from "@/components/panels/ConfigEditorPanel";
 import LogsPanel from "@/components/panels/LogsPanel";
+import PlayersPanel from "@/components/panels/PlayersPanel";
 import { ConsoleWsProvider, useConsoleWs } from "@/contexts/ConsoleWsContext";
 
 function formatUptime(seconds: number): string {
@@ -118,23 +117,15 @@ const Index = () => {
   const renderContent = () => {
     switch (activeTab) {
       case "console":
-        return (
-          <ConsoleWsProvider>
-            <ConsoleTabContent />
-          </ConsoleWsProvider>
-        );
+        return <ConsoleTabContent />;
       case "files":
         return <FilesPanel />;
-      case "databases":
-        return <DatabasesPanel />;
       case "schedules":
         return <SchedulesPanel />;
       case "users":
         return <UsersPanel />;
       case "backups":
         return <BackupsPanel />;
-      case "network":
-        return <NetworkPanel />;
       case "config":
         return <ConfigEditorPanel />;
       case "settings":
@@ -143,6 +134,8 @@ const Index = () => {
         return <ActivityPanel />;
       case "logs":
         return <LogsPanel />;
+      case "players":
+        return <PlayersPanel />;
       default:
         return null;
     }
@@ -163,9 +156,11 @@ const Index = () => {
       </header>
 
         <div className="mx-auto max-w-7xl px-6 py-6 space-y-6">
-        <ServerHeader />
-        <ServerNav activeTab={activeTab} onTabChange={setActiveTab} />
-        {renderContent()}
+        <ConsoleWsProvider>
+          <ServerHeader />
+          <ServerNav activeTab={activeTab} onTabChange={setActiveTab} />
+          {renderContent()}
+        </ConsoleWsProvider>
       </div>
     </div>
   );

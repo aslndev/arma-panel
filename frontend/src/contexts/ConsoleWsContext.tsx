@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { getPanelWebSocketUrl } from "@/api/endpoints";
-import type { ServerSummary } from "@/api/endpoints";
+import type { ServerSummary, ServerPlayer } from "@/api/endpoints";
 
 interface ExecResult {
   stdout: string;
@@ -20,7 +20,10 @@ type ResolveExec = (value: ExecResult) => void;
 
 interface ConsoleWsValue {
   summary: ServerSummary | null;
+  players: ServerPlayer[] | null;
   sendExec: (command: string) => Promise<ExecResult>;
+  subscribePlayers: () => void;
+  unsubscribePlayers: () => void;
   connected: boolean;
 }
 
@@ -34,10 +37,12 @@ export function useConsoleWs() {
 
 export function ConsoleWsProvider({ children }: { children: ReactNode }) {
   const [summary, setSummary] = useState<ServerSummary | null>(null);
+  const [players, setPlayers] = useState<ServerPlayer[] | null>(null);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingExecRef = useRef<Map<string, ResolveExec>>(new Map());
   const idRef = useRef(0);
+  const playersSubscribedRef = useRef(false);
 
   useEffect(() => {
     const url = getPanelWebSocketUrl();
@@ -54,6 +59,9 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
         if (msg.type === "summary") {
           setSummary(msg.data);
         }
+        if (msg.type === "players" && msg.data && Array.isArray(msg.data.players)) {
+          setPlayers(msg.data.players);
+        }
         if (msg.type === "execResult" && msg.id != null) {
           const resolve = pendingExecRef.current.get(String(msg.id));
           if (resolve) {
@@ -69,11 +77,37 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
     };
 
     return () => {
+      if (playersSubscribedRef.current && ws.readyState === 1) {
+        try {
+          ws.send(JSON.stringify({ type: "unsubscribe", channel: "players" }));
+        } catch (_) {}
+      }
       ws.close();
       wsRef.current = null;
       pendingExecRef.current.forEach((r) => r({ stdout: "", stderr: "Connection closed", code: 1 }));
       pendingExecRef.current.clear();
     };
+  }, []);
+
+  const subscribePlayers = useCallback(() => {
+    if (playersSubscribedRef.current) return;
+    playersSubscribedRef.current = true;
+    try {
+      if (wsRef.current?.readyState === 1) {
+        wsRef.current.send(JSON.stringify({ type: "subscribe", channel: "players" }));
+      }
+    } catch (_) {}
+  }, []);
+
+  const unsubscribePlayers = useCallback(() => {
+    if (!playersSubscribedRef.current) return;
+    playersSubscribedRef.current = false;
+    try {
+      if (wsRef.current?.readyState === 1) {
+        wsRef.current.send(JSON.stringify({ type: "unsubscribe", channel: "players" }));
+      }
+    } catch (_) {}
+    setPlayers(null);
   }, []);
 
   const sendExec = useCallback((command: string): Promise<ExecResult> => {
@@ -98,7 +132,14 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const value: ConsoleWsValue = { summary, sendExec, connected };
+  const value: ConsoleWsValue = {
+    summary,
+    players,
+    sendExec,
+    subscribePlayers,
+    unsubscribePlayers,
+    connected,
+  };
 
   return (
     <ConsoleWsContext.Provider value={value}>

@@ -2,8 +2,43 @@ import { WebSocketServer } from "ws";
 import { verifyToken } from "../useCases/AuthLogin.js";
 import * as ServerSummaryUseCase from "../useCases/ServerSummaryUseCase.js";
 import * as ServerExecUseCase from "../useCases/ServerExecUseCase.js";
+import * as RconUseCase from "../useCases/RconUseCase.js";
 
 const SUMMARY_INTERVAL_MS = 5000;
+const PLAYERS_INTERVAL_MS = 3000;
+
+const playersSubscribers = new Set();
+let playersIntervalId = null;
+
+function startPlayersBroadcast() {
+  if (playersIntervalId != null) return;
+  playersIntervalId = setInterval(async () => {
+    if (playersSubscribers.size === 0) return;
+    let players = [];
+    try {
+      const result = await RconUseCase.listPlayers("panel");
+      players = result.players ?? [];
+    } catch (_) {
+      players = [];
+    }
+    const payload = JSON.stringify({ type: "players", data: { players } });
+    for (const ws of playersSubscribers) {
+      try {
+        if (ws.readyState === 1) ws.send(payload);
+        else playersSubscribers.delete(ws);
+      } catch (_) {
+        playersSubscribers.delete(ws);
+      }
+    }
+  }, PLAYERS_INTERVAL_MS);
+}
+
+function stopPlayersBroadcast() {
+  if (playersIntervalId != null) {
+    clearInterval(playersIntervalId);
+    playersIntervalId = null;
+  }
+}
 
 function attachPanelWs(server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -66,11 +101,39 @@ function attachPanelWs(server) {
             code: result.code,
           });
         }
+        if (msg.type === "subscribe" && msg.channel === "players") {
+          playersSubscribers.add(ws);
+          if (playersSubscribers.size === 1) startPlayersBroadcast();
+          (async () => {
+            let list = [];
+            try {
+              const result = await RconUseCase.listPlayers("panel");
+              list = result.players ?? [];
+            } catch (_) {}
+            if (ws.readyState === 1) {
+              try {
+                ws.send(JSON.stringify({ type: "players", data: { players: list } }));
+              } catch (_) {}
+            }
+          })();
+        }
+        if (msg.type === "unsubscribe" && msg.channel === "players") {
+          playersSubscribers.delete(ws);
+          if (playersSubscribers.size === 0) stopPlayersBroadcast();
+        }
       } catch (_) {}
     });
 
-    ws.on("close", () => clearInterval(intervalId));
-    ws.on("error", () => clearInterval(intervalId));
+    ws.on("close", () => {
+      clearInterval(intervalId);
+      playersSubscribers.delete(ws);
+      if (playersSubscribers.size === 0) stopPlayersBroadcast();
+    });
+    ws.on("error", () => {
+      clearInterval(intervalId);
+      playersSubscribers.delete(ws);
+      if (playersSubscribers.size === 0) stopPlayersBroadcast();
+    });
   });
 }
 
