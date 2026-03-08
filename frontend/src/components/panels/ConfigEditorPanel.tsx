@@ -99,7 +99,6 @@ const HELP_LINKS: Record<string, string> = {
   slotReservationTimeout: WIKI_BASE + "#operating",
   joinQueue: WIKI_BASE + "#operating",
   disableNavmeshStreaming: WIKI_BASE + "#operating",
-  maxSize: WIKI_BASE + "#operating",
 };
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
@@ -144,8 +143,22 @@ const DEFAULTS = {
   aiLimit: -1,
   slotReservationTimeout: 60,
   joinQueue: 30,
-  maxSize: 0,
 };
+
+/** missionHeader must be an object (schema). Parse JSON string or wrap plain text in m_sDetails. */
+function parseMissionHeader(value: string): { missionHeader?: Record<string, unknown> } {
+  const s = (value || "").trim();
+  if (!s) return {};
+  try {
+    const parsed = JSON.parse(s) as unknown;
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { missionHeader: parsed as Record<string, unknown> };
+    }
+  } catch {
+    /* not JSON */
+  }
+  return { missionHeader: { m_sDetails: s } };
+}
 
 // ─── UI Helpers ──────────────────────────────────────────────────────────────
 
@@ -294,7 +307,6 @@ const ConfigEditorPanel = () => {
   const [aiLimit, setAiLimit] = useState(DEFAULTS.aiLimit);
   const [slotReservationTimeout, setSlotReservationTimeout] = useState(DEFAULTS.slotReservationTimeout);
   const [joinQueue, setJoinQueue] = useState(DEFAULTS.joinQueue);
-  const [maxSize, setMaxSize] = useState(DEFAULTS.maxSize);
 
   // Mods
   const [mods, setMods] = useState<ModEntry[]>([]);
@@ -338,7 +350,7 @@ const ConfigEditorPanel = () => {
           VONDisableUI: vonDisableUI,
           VONDisableDirectSpeechUI: vonDisableDirectSpeechUI,
           VONCanTransmitCrossFaction: vonCanTransmitCrossFaction,
-          ...(missionHeader ? { missionHeader } : {}),
+          ...(parseMissionHeader(missionHeader) ?? {}),
         },
         ...(mods.length > 0 ? { mods: mods.map(m => ({ modId: m.modId, name: m.name, ...(m.version ? { version: m.version } : {}), required: m.required })) } : {}),
       },
@@ -350,8 +362,7 @@ const ConfigEditorPanel = () => {
         playerSaveTime,
         aiLimit,
         slotReservationTimeout,
-        joinQueue,
-        ...(maxSize > 0 ? { maxSize } : {}),
+        joinQueue: { maxSize: joinQueue },
         ...(disableNavmeshStreaming ? { disableNavmeshStreaming: disableNavmeshStreaming.split("\n").filter(Boolean) } : {}),
       },
     };
@@ -366,7 +377,7 @@ const ConfigEditorPanel = () => {
     fastValidation, battlEye, vonDisableUI, vonDisableDirectSpeechUI, vonCanTransmitCrossFaction, missionHeader,
     mods,
     lobbyPlayerSynchronise, disableNavmeshStreaming, disableServerShutdown, disableCrashReporter,
-    disableAI, playerSaveTime, aiLimit, slotReservationTimeout, joinQueue, maxSize,
+    disableAI, playerSaveTime, aiLimit, slotReservationTimeout, joinQueue,
   ]);
 
   const startupParams = useMemo(() => {
@@ -466,8 +477,11 @@ const ConfigEditorPanel = () => {
         if (op.playerSaveTime !== undefined) setPlayerSaveTime(op.playerSaveTime as number);
         if (op.aiLimit !== undefined) setAiLimit(op.aiLimit as number);
         if (op.slotReservationTimeout !== undefined) setSlotReservationTimeout(op.slotReservationTimeout as number);
-        if (op.joinQueue !== undefined) setJoinQueue(op.joinQueue as number);
-        if (op.maxSize !== undefined) setMaxSize(op.maxSize as number);
+        if (op.joinQueue !== undefined) {
+          const jq = op.joinQueue;
+          if (typeof jq === "object" && jq !== null && "maxSize" in jq) setJoinQueue(Number((jq as { maxSize?: number }).maxSize) || 0);
+          else if (typeof jq === "number") setJoinQueue(jq);
+        }
         if (op.disableNavmeshStreaming) setDisableNavmeshStreaming((op.disableNavmeshStreaming as string[]).join("\n"));
       }
       // Also check top-level for backward compat
@@ -501,7 +515,10 @@ const ConfigEditorPanel = () => {
           if (gp.VONDisableUI !== undefined) setVonDisableUI(gp.VONDisableUI as boolean);
           if (gp.VONDisableDirectSpeechUI !== undefined) setVonDisableDirectSpeechUI(gp.VONDisableDirectSpeechUI as boolean);
           if (gp.VONCanTransmitCrossFaction !== undefined) setVonCanTransmitCrossFaction(gp.VONCanTransmitCrossFaction as boolean);
-          if (gp.missionHeader !== undefined) setMissionHeader(gp.missionHeader as string);
+          if (gp.missionHeader !== undefined) {
+            const mh = gp.missionHeader;
+            setMissionHeader(typeof mh === "string" ? mh : JSON.stringify(mh, null, 2));
+          }
         }
       }
       toast.success("Config imported successfully!");
@@ -609,7 +626,7 @@ const ConfigEditorPanel = () => {
     setDisableServerShutdown(DEFAULTS.disableServerShutdown); setDisableCrashReporter(DEFAULTS.disableCrashReporter);
     setDisableAI(DEFAULTS.disableAI); setPlayerSaveTime(DEFAULTS.playerSaveTime);
     setAiLimit(DEFAULTS.aiLimit); setSlotReservationTimeout(DEFAULTS.slotReservationTimeout);
-    setJoinQueue(DEFAULTS.joinQueue); setMaxSize(DEFAULTS.maxSize);
+    setJoinQueue(DEFAULTS.joinQueue);
     setMods([]);
     toast.info("Config reset to defaults");
   };
@@ -880,8 +897,8 @@ const ConfigEditorPanel = () => {
               <FieldRow label="Network View Distance" tooltip="Network replication view distance." helpKey="networkViewDistance" onReset={() => setNetworkViewDistance(DEFAULTS.networkViewDistance)}>
                 <Input type="number" value={networkViewDistance} onChange={(e) => setNetworkViewDistance(Number(e.target.value))} />
               </FieldRow>
-              <FieldRow label="Mission Header" tooltip="Custom mission header text." helpKey="missionHeader" onReset={() => setMissionHeader(DEFAULTS.missionHeader)}>
-                <Input value={missionHeader} onChange={(e) => setMissionHeader(e.target.value)} placeholder="Optional mission header" />
+              <FieldRow label="Mission Header" tooltip="JSON object (e.g. m_sName, m_iStartingHours) or plain text (stored as m_sDetails)." helpKey="missionHeader" onReset={() => setMissionHeader(DEFAULTS.missionHeader)}>
+                <Textarea value={missionHeader} onChange={(e) => setMissionHeader(e.target.value)} placeholder='{"m_sName": "My Server", "m_iStartingHours": 7}' className="font-mono text-xs min-h-[80px]" />
               </FieldRow>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -918,11 +935,8 @@ const ConfigEditorPanel = () => {
               <FieldRow label="Slot Reservation Timeout" tooltip="Seconds to hold a slot for reconnection." helpKey="slotReservationTimeout" onReset={() => setSlotReservationTimeout(DEFAULTS.slotReservationTimeout)}>
                 <Input type="number" value={slotReservationTimeout} onChange={(e) => setSlotReservationTimeout(Number(e.target.value))} />
               </FieldRow>
-              <FieldRow label="Join Queue" tooltip="Max players in join queue." helpKey="joinQueue" onReset={() => setJoinQueue(DEFAULTS.joinQueue)}>
-                <Input type="number" value={joinQueue} onChange={(e) => setJoinQueue(Number(e.target.value))} />
-              </FieldRow>
-              <FieldRow label="Max Size" tooltip="Max server state size in bytes. 0 for unlimited." helpKey="maxSize" onReset={() => setMaxSize(DEFAULTS.maxSize)}>
-                <Input type="number" value={maxSize} onChange={(e) => setMaxSize(Number(e.target.value))} />
+              <FieldRow label="Join Queue (maxSize)" tooltip="Max players in join queue (0 = disabled, max 50)." helpKey="joinQueue" onReset={() => setJoinQueue(DEFAULTS.joinQueue)}>
+                <Input type="number" min={0} max={50} value={joinQueue} onChange={(e) => setJoinQueue(Number(e.target.value))} />
               </FieldRow>
             </div>
             <FieldRow label="Disable Navmesh Streaming" tooltip="List of worlds to disable navmesh streaming (one per line)." helpKey="disableNavmeshStreaming" onReset={() => setDisableNavmeshStreaming(DEFAULTS.disableNavmeshStreaming)}>
