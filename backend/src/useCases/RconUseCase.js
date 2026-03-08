@@ -76,11 +76,17 @@ export async function runCommand(command, byUser = "admin") {
 }
 
 /**
- * List connected players. Sends "players" (or "#players" if needed). Parses response into array.
+ * List connected players. Sends "players". On RCON/config error returns { players: [], error }.
  * Expected format is often: "ID Name" per line or similar; we try to parse and fallback to raw lines.
  */
 export async function listPlayers(byUser = "admin") {
-  const raw = await runCommand("players", byUser);
+  let raw = "";
+  try {
+    raw = await runCommand("players", byUser);
+  } catch (err) {
+    const msg = err?.message || String(err);
+    return { players: [], raw: "", error: msg };
+  }
   const lines = String(raw || "")
     .split(/\r?\n/)
     .map((s) => s.trim())

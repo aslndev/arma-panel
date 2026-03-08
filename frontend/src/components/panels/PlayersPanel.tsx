@@ -27,7 +27,7 @@ import { useConsoleWs } from "@/contexts/ConsoleWsContext";
 type TabId = "online" | "bans";
 
 const PlayersPanel = () => {
-  const { players: wsPlayers, subscribePlayers, unsubscribePlayers, connected } = useConsoleWs();
+  const { players: wsPlayers, playersError, subscribePlayers, unsubscribePlayers, connected } = useConsoleWs();
   const [tab, setTab] = useState<TabId>("online");
   const [bans, setBans] = useState<{ identityId: string; detail: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,9 +150,17 @@ const PlayersPanel = () => {
             <div className="p-8 text-center text-muted-foreground text-sm">Connecting…</div>
           ) : wsPlayers === null ? (
             <div className="p-8 text-center text-muted-foreground text-sm">Loading players…</div>
+          ) : playersError ? (
+            <div className="p-8 space-y-2">
+              <p className="text-center text-destructive font-medium text-sm">RCON error</p>
+              <p className="text-center text-muted-foreground text-sm break-all px-4">{playersError}</p>
+              <p className="text-center text-muted-foreground text-xs mt-4">
+                Check Config Editor → RCON: address (use 127.0.0.1 if panel and server are on the same machine), port (e.g. 19999), and password. Arma Reforger may use BattleEye RCON; if connection still fails, the server might need a different RCON protocol.
+              </p>
+            </div>
           ) : players.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground text-sm">
-              No players online. Ensure the server is running and RCON is configured in Config Editor (RCON tab).
+              No players online. Server is reachable via RCON; list is empty.
             </div>
           ) : (
             <div className="divide-y divide-border">

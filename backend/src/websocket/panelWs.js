@@ -15,13 +15,15 @@ function startPlayersBroadcast() {
   playersIntervalId = setInterval(async () => {
     if (playersSubscribers.size === 0) return;
     let players = [];
+    let error = null;
     try {
       const result = await RconUseCase.listPlayers("panel");
       players = result.players ?? [];
+      error = result.error || null;
     } catch (_) {
-      players = [];
+      error = "Failed to fetch players";
     }
-    const payload = JSON.stringify({ type: "players", data: { players } });
+    const payload = JSON.stringify({ type: "players", data: { players, error } });
     for (const ws of playersSubscribers) {
       try {
         if (ws.readyState === 1) ws.send(payload);
@@ -106,13 +108,17 @@ function attachPanelWs(server) {
           if (playersSubscribers.size === 1) startPlayersBroadcast();
           (async () => {
             let list = [];
+            let err = null;
             try {
               const result = await RconUseCase.listPlayers("panel");
               list = result.players ?? [];
-            } catch (_) {}
+              err = result.error || null;
+            } catch (_) {
+              err = "Failed to fetch players";
+            }
             if (ws.readyState === 1) {
               try {
-                ws.send(JSON.stringify({ type: "players", data: { players: list } }));
+                ws.send(JSON.stringify({ type: "players", data: { players: list, error: err } }));
               } catch (_) {}
             }
           })();

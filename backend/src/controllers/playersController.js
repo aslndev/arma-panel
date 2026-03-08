@@ -2,8 +2,12 @@ import * as RconUseCase from "../useCases/RconUseCase.js";
 
 export async function list(req, res) {
   try {
-    const { players, raw } = await RconUseCase.listPlayers(req.user?.username || "admin");
-    return res.json({ players, raw });
+    const result = await RconUseCase.listPlayers(req.user?.username || "admin");
+    return res.json({
+      players: result.players ?? [],
+      raw: result.raw ?? "",
+      error: result.error || undefined,
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message || "Failed to list players" });
   }

@@ -21,6 +21,7 @@ type ResolveExec = (value: ExecResult) => void;
 interface ConsoleWsValue {
   summary: ServerSummary | null;
   players: ServerPlayer[] | null;
+  playersError: string | null;
   sendExec: (command: string) => Promise<ExecResult>;
   subscribePlayers: () => void;
   unsubscribePlayers: () => void;
@@ -38,6 +39,7 @@ export function useConsoleWs() {
 export function ConsoleWsProvider({ children }: { children: ReactNode }) {
   const [summary, setSummary] = useState<ServerSummary | null>(null);
   const [players, setPlayers] = useState<ServerPlayer[] | null>(null);
+  const [playersError, setPlayersError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingExecRef = useRef<Map<string, ResolveExec>>(new Map());
@@ -59,8 +61,9 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
         if (msg.type === "summary") {
           setSummary(msg.data);
         }
-        if (msg.type === "players" && msg.data && Array.isArray(msg.data.players)) {
-          setPlayers(msg.data.players);
+        if (msg.type === "players" && msg.data) {
+          setPlayers(Array.isArray(msg.data.players) ? msg.data.players : []);
+          setPlayersError(msg.data.error ?? null);
         }
         if (msg.type === "execResult" && msg.id != null) {
           const resolve = pendingExecRef.current.get(String(msg.id));
@@ -108,6 +111,7 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
       }
     } catch (_) {}
     setPlayers(null);
+    setPlayersError(null);
   }, []);
 
   const sendExec = useCallback((command: string): Promise<ExecResult> => {
@@ -135,6 +139,7 @@ export function ConsoleWsProvider({ children }: { children: ReactNode }) {
   const value: ConsoleWsValue = {
     summary,
     players,
+    playersError,
     sendExec,
     subscribePlayers,
     unsubscribePlayers,
